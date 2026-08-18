@@ -25,7 +25,7 @@ interface SubmissionDetailsResponse {
       id: number;
       timestamp: number;
       statusDisplay: string;
-      lang: string;
+      lang: { name: string } | null;
       code: string | null;
       runtime: string | null;
       memory: string | null;
@@ -39,7 +39,7 @@ interface QuestionResponse {
   data: {
     question: {
       questionId: string;
-      frontendQuestionId: string;
+      questionFrontendId: string;
       title: string;
       titleSlug: string;
       difficulty: string;
@@ -74,7 +74,7 @@ query submissionDetails($submissionId: Int!) {
     id
     timestamp
     statusDisplay
-    lang
+    lang { name }
     code
     runtime
     memory
@@ -87,7 +87,7 @@ const QUESTION_QUERY = `
 query questionData($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
     questionId
-    frontendQuestionId
+    questionFrontendId
     title
     titleSlug
     difficulty
@@ -198,7 +198,7 @@ export class LeetCodeClient {
       id: d.id,
       timestamp: d.timestamp,
       statusDisplay: d.statusDisplay,
-      lang: d.lang,
+      lang: d.lang?.name ?? "",
       code: d.code ?? "",
       runtime: d.runtime,
       memory: d.memory,
@@ -232,7 +232,7 @@ export class LeetCodeClient {
     }
 
     return {
-      frontendId: q.frontendQuestionId,
+      frontendId: q.questionFrontendId,
       title: q.title,
       titleSlug: q.titleSlug,
       difficulty: q.difficulty as Question["difficulty"],
