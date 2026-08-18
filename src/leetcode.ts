@@ -2,12 +2,21 @@ import type { Question, SubmissionDetails, SubmissionListEntry } from "./types";
 
 const BASE_URL = "https://leetcode.com";
 const GRAPHQL_URL = `${BASE_URL}/graphql`;
-const SUBMISSIONS_URL = `${BASE_URL}/api/submissions/`;
 const USER_AGENT = "leech/0.1";
 
-interface ListResponse {
+/** A normalized page of submissions (the wire shape lives in ListResponse). */
+interface SubmissionPage {
   hasMore: boolean;
   submissions: SubmissionListEntry[];
+}
+
+interface ListResponse {
+  data: {
+    submissionList: {
+      hasNext: boolean;
+      submissions: SubmissionListEntry[];
+    };
+  };
 }
 
 interface SubmissionDetailsResponse {
@@ -41,6 +50,23 @@ interface QuestionResponse {
     } | null;
   };
 }
+
+const SUBMISSION_LIST_QUERY = `
+query submissionList($offset: Int!, $limit: Int!, $slug: String) {
+  submissionList(offset: $offset, limit: $limit, questionSlug: $slug) {
+    hasNext
+    submissions {
+      id
+      lang
+      timestamp
+      statusDisplay
+      runtime
+      title
+      memory
+      titleSlug
+    }
+  }
+}`;
 
 const SUBMISSION_DETAILS_QUERY = `
 query submissionDetails($submissionId: Int!) {
@@ -125,9 +151,31 @@ export class LeetCodeClient {
   }
 
   /** Fetch one page of submissions (newest first). */
-  async listSubmissions(offset: number, limit = 20): Promise<ListResponse> {
-    const url = `${SUBMISSIONS_URL}?offset=${offset}&limit=${limit}`;
-    return this.request<ListResponse>(url, { headers: this.headers() });
+  async listSubmissions(offset: number, limit = 20): Promise<SubmissionPage> {
+    await this.throttle();
+    const res = await this.request<ListResponse>(GRAPHQL_URL, {
+      method: "POST",
+      headers: this.headers({ "content-type": "application/json" }),
+      body: JSON.stringify({
+        query: SUBMISSION_LIST_QUERY,
+        variables: { offset, limit, slug: null },
+        operationName: "submissionList",
+      }),
+    });
+    const list = res.data?.submissionList;
+    if (!list) {
+      // An invalid/expired session yields HTTP 200 with a null submissionList,
+      // so the 401/403 guard in request() never fires. Fail loudly instead of
+      // silently syncing nothing.
+      throw new Error(
+        "LeetCode returned no submission list — the session cookie is likely " +
+          "invalid or expired. Refresh LEETCODE_SESSION and csrftoken from your browser."
+      );
+    }
+    return {
+      hasMore: list.hasNext ?? false,
+      submissions: list.submissions ?? [],
+    };
   }
 
   /** Fetch full details (code, stats) for a single submission. */
