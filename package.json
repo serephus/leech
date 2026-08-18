@@ -1,0 +1,39 @@
+{
+  "name": "leech",
+  "version": "0.1.0",
+  "description": "Cookie-authenticated LeetCode sync GitHub Action with templated output (markdown/typst-ready), submission filtering, one commit per submission.",
+  "license": "MIT",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "action.yml"
+  ],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --minify --outfile=dist/index.js && esbuild src/cli.ts --bundle --platform=node --target=node20 --format=cjs --minify --outfile=dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0",
+    "@octokit/rest": "^21.1.1",
+    "js-yaml": "^4.1.0",
+    "nunjucks": "^3.2.4",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "@types/nunjucks": "^3.2.6",
+    "@types/turndown": "^5.0.5",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

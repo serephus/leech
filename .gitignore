@@ -1,0 +1,9 @@
+.direnv
+*.pdf
+*.html
+
+.codewhale
+
+# Node
+node_modules/
+*.tsbuildinfo

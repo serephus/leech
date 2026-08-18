@@ -1,0 +1,65 @@
+# Builds dist/index.js, commits it on top of the pushed tag's commit, and
+# force-moves the tag to that commit — so `uses: serephus/leech@vX.Y.Z`
+# always resolves to a commit that contains the bundled action.
+#
+# Loop safety: pushes made with GITHUB_TOKEN do not trigger new workflow runs,
+# and the "Skip if dist is already up to date" step guards manual re-runs.
+#
+# Customize the commit message via the env vars below.
+name: "Build dist and move tag"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dist-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COMMIT_PREFIX: "chore(dist):"
+  COMMIT_TEMPLATE: "build dist for {{tag}}"
+
+jobs:
+  build-dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install and build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Skip if dist is already up to date
+        id: check
+        run: |
+          git add -f dist
+          if git diff --cached --quiet; then
+            echo "dist is already committed at ${GITHUB_REF_NAME}; nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit dist and move tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          message="${COMMIT_TEMPLATE//\{\{tag\}\}/$tag}"
+          git add -f dist
+          git -c user.name="leech-dist-bot" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "${COMMIT_PREFIX} ${message}"
+          git tag -f "$tag" HEAD
+          git push -f origin "$tag"

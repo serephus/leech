@@ -1,0 +1,31 @@
+name: "leech"
+description: >-
+  Sync LeetCode submissions to your repository with templated, blog-friendly output.
+  Cookie-authenticated, filterable, one commit per submission (possibly multiple files).
+author: "serephus"
+inputs:
+  github-token:
+    description: "GitHub token with contents:write on the target repository."
+    required: true
+  leetcode-session:
+    description: "LeetCode LEETCODE_SESSION cookie value."
+    required: true
+  leetcode-csrf-token:
+    description: "LeetCode csrftoken cookie value."
+    required: true
+  config:
+    description: >-
+      Inline YAML configuration (templates, filters, commit settings).
+      See README for the full schema.
+    required: true
+  dry-run:
+    description: "Render everything but do not create commits."
+    required: false
+    default: "false"
+  verbose:
+    description: "Verbose logging."
+    required: false
+    default: "false"
+runs:
+  using: "node24"
+  main: "dist/index.js"
