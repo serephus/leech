@@ -28,8 +28,8 @@ the repo public to use it cross-owner).
 
 ## How it works
 
-1. Fetch submissions newer than the watermark from
-   `https://leetcode.com/api/submissions/` (authenticated with your cookies).
+1. Fetch submissions newer than the watermark via LeetCode's GraphQL API
+   (`submissionList` query, authenticated with your cookies).
 2. Apply filters.
 3. For each remaining submission (oldest first): fetch full details
    (code, runtime, memory, percentiles) and the problem description via
@@ -242,8 +242,9 @@ pnpm build         # esbuild -> dist/index.js + dist/cli.js
 
 - LeetCode session cookies expire; refresh the secrets when the action starts
   failing with HTTP 401/403.
-- LeetCode's API is unofficial and changes without notice; the endpoints used
-  are `GET /api/submissions/` and `POST /graphql`.
+- LeetCode's API is unofficial and changes without notice; all requests go to
+  `POST /graphql` (the old `GET /api/submissions/` list endpoint no longer
+  exists).
 - Do not run two syncs against the same branch concurrently (the branch ref
   update is non-force and the second run will fail with a clear error).
 
