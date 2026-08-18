@@ -35,7 +35,9 @@ the repo public to use it cross-owner).
    (code, runtime, memory, percentiles) and the problem description via
    LeetCode's GraphQL API, render the configured files, and create **one git
    commit per submission** with `author.date = submission timestamp`.
-4. Advance the branch ref after every commit, so a failed run resumes cleanly.
+4. Push the branch ref once at the end of the sync — all commits land in a
+   single ref update, so a run is atomic (either every submission lands or
+   none does).
 
 ## Quickstart
 

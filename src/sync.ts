@@ -134,6 +134,12 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     synced++;
   }
 
+  // Push all commits of this sync in one ref update (per-sync, not per-submission).
+  const pushed = await committer.flush();
+  if (pushed > 0) {
+    log(`pushed ${pushed} commit(s) to ${owner}/${repo}@${branch}`);
+  }
+
   log(
     `done: synced=${synced}, filtered=${skippedFiltered}, watermark=${watermark}`
   );
