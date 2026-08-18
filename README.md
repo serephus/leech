@@ -139,20 +139,40 @@ language.
 
 ## Templates
 
-Variables available in filename, content, and commit-message templates:
+Variables available in filename, content, and commit-message templates
+(`commit.prefix` is a literal marker and is not templated).
 
-- `submission.id`, `submission.timestamp` (unix seconds),
-  `submission.date` (`YYYY-MM-DD`), `submission.lang`,
-  `submission.lang_ext`, `submission.code`, `submission.status`,
-  `submission.runtime`, `submission.memory`,
-  `submission.runtime_percentile`, `submission.memory_percentile`
-- `question.frontend_id`, `question.title`, `question.title_slug`,
-  `question.difficulty`, `question.tags` (array), `question.url`,
-  `question.content_html`, `question.content_md`,
-  `question.acceptance_rate`, `question.is_paid_only`
+`submission`:
+
+- `submission.id` — number, LeetCode submission id
+- `submission.timestamp` — number, unix seconds
+- `submission.date` — `YYYY-MM-DD` (UTC)
+- `submission.lang` — language id (`python3`, `typescript`, …)
+- `submission.lang_ext` — file extension mapped from lang (`py`, `ts`, …)
+- `submission.code` — the solution code
+- `submission.status` — e.g. `Accepted`
+- `submission.runtime` — e.g. `42 ms` (`null` when unavailable)
+- `submission.memory` — e.g. `13.5 MB` (`null` when unavailable)
+- `submission.runtime_percentile` — number (`null` when unavailable)
+- `submission.memory_percentile` — number (`null` when unavailable)
+
+`question`:
+
+- `question.frontend_id` — e.g. `1`
+- `question.title` — e.g. `Two Sum`
+- `question.title_slug` — e.g. `two-sum`
+- `question.difficulty` — `Easy` | `Medium` | `Hard`
+- `question.tags` — array of topic tag names
+- `question.url` — `https://leetcode.com/problems/<slug>/`
+- `question.content_html` — raw problem HTML
+- `question.content_md` — converted GitHub-flavored markdown
+- `question.acceptance_rate` — number (`null` when unavailable)
+- `question.is_paid_only` — boolean
 
 Custom filters: `datefmt('YYYY-MM-DD')` (tokens `YYYY MM DD HH mm ss`, UTC),
-`slugify`, `ext` (lang → file extension, e.g. `python3` → `py`). All standard
+`slugify`, `pad(4)` (zero-pad to a width, default 4, no truncation — e.g.
+`{{ question.frontend_id | pad(4) }}` → `0001`), `ext` (lang → file extension,
+e.g. `python3` → `py`). All standard
 [Nunjucks filters](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
 are available (`join`, `lower`, `replace`, …). Undefined variables render empty.
 
