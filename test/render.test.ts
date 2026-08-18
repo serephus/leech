@@ -3,6 +3,7 @@ import {
   buildContext,
   datefmt,
   langExt,
+  pad,
   renderFilename,
   renderTemplate,
   toMarkdown,
@@ -101,5 +102,17 @@ describe("langExt", () => {
     expect(langExt("rust")).toBe("rs");
     expect(langExt("typescript")).toBe("ts");
     expect(langExt("brainfuck")).toBe("brainfuck");
+  });
+});
+
+describe("pad", () => {
+  it("pads to at least 4 digits", () => {
+    expect(pad("1")).toBe("0001");
+    expect(pad(42)).toBe("0042");
+    expect(pad("1234")).toBe("1234");
+    expect(pad("12345")).toBe("12345");
+  });
+  it("supports a custom width", () => {
+    expect(pad("7", 3)).toBe("007");
   });
 });

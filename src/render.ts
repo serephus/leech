@@ -46,6 +46,12 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/** Pads a value with leading zeros to at least `width` digits (no truncation). */
+export function pad(value: string | number, width = 4): string {
+  const s = String(value);
+  return s.length >= width ? s : "0".repeat(width - s.length) + s;
+}
+
 /**
  * Formats a unix-seconds timestamp (UTC). Supported tokens:
  * YYYY MM DD HH mm ss — e.g. datefmt(1704067200, 'YYYY-MM-DD') => '2024-01-01'.
@@ -126,6 +132,7 @@ function getEnv(): nunjucks.Environment {
     });
     env.addFilter("datefmt", datefmt);
     env.addFilter("slugify", slugify);
+    env.addFilter("pad", pad);
     env.addFilter("ext", langExt);
   }
   return env;
