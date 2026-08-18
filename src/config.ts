@@ -4,6 +4,23 @@ import type { FileTemplate, LeechConfig } from "./types";
 
 export const DEFAULT_COMMIT_PREFIX = "leech:";
 
+const DEFAULT_FILTERS = {
+  status: "accepted" as const,
+  languages: [] as string[],
+  excludeLanguages: [] as string[],
+  problems: [] as string[],
+  excludeProblems: [] as string[],
+};
+
+const DEFAULT_COMMIT = {
+  prefix: DEFAULT_COMMIT_PREFIX,
+  message: "Sync {{ question.title }} ({{ submission.lang }})",
+  authorName: "leech-bot",
+  authorEmail: "leech-bot@users.noreply.github.com",
+};
+
+const DEFAULT_CLIENT = { delayMs: 250 };
+
 /** Default output layout: one folder per problem (under `destination`, default `solutions/`). */
 export const DEFAULT_FILES: FileTemplate[] = [
   {
@@ -45,29 +62,38 @@ const configSchema = z.object({
   destination: z.string().default("solutions"),
   filters: z
     .object({
-      status: z.enum(["accepted", "all"]).default("accepted"),
-      languages: z.array(z.string()).default([]),
-      excludeLanguages: z.array(z.string()).default([]),
-      problems: z.array(z.string()).default([]),
-      excludeProblems: z.array(z.string()).default([]),
+      status: z.enum(["accepted", "all"]).default(DEFAULT_FILTERS.status),
+      languages: z.array(z.string()).default(DEFAULT_FILTERS.languages),
+      excludeLanguages: z
+        .array(z.string())
+        .default(DEFAULT_FILTERS.excludeLanguages),
+      problems: z.array(z.string()).default(DEFAULT_FILTERS.problems),
+      excludeProblems: z
+        .array(z.string())
+        .default(DEFAULT_FILTERS.excludeProblems),
       since: z.union([z.number(), z.string()]).optional(),
       until: z.union([z.number(), z.string()]).optional(),
     })
-    .default({}),
+    .default({ ...DEFAULT_FILTERS }),
   files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
   commit: z
     .object({
-      prefix: z.string().min(1).default(DEFAULT_COMMIT_PREFIX),
-      message: z
-        .string()
-        .default("Sync {{ question.title }} ({{ submission.lang }})"),
-      authorName: z.string().default("leech-bot"),
-      authorEmail: z.string().default("leech-bot@users.noreply.github.com"),
+      prefix: z.string().min(1).default(DEFAULT_COMMIT.prefix),
+      message: z.string().default(DEFAULT_COMMIT.message),
+      authorName: z.string().default(DEFAULT_COMMIT.authorName),
+      authorEmail: z.string().default(DEFAULT_COMMIT.authorEmail),
     })
-    .default({}),
+    .default({ ...DEFAULT_COMMIT }),
   client: z
-    .object({ delayMs: z.number().int().min(0).max(10000).default(250) })
-    .default({}),
+    .object({
+      delayMs: z
+        .number()
+        .int()
+        .min(0)
+        .max(10000)
+        .default(DEFAULT_CLIENT.delayMs),
+    })
+    .default({ ...DEFAULT_CLIENT }),
 });
 
 export function parseConfig(raw: string): LeechConfig {
