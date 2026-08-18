@@ -163,18 +163,18 @@ export class LeetCodeClient {
       }),
     });
     const list = res.data?.submissionList;
-    if (!list) {
-      // An invalid/expired session yields HTTP 200 with a null submissionList,
-      // so the 401/403 guard in request() never fires. Fail loudly instead of
-      // silently syncing nothing.
+    // An invalid/expired session yields HTTP 200 with a null submissionList
+    // (hasNext/submissions are null), so the 401/403 guard in request() never
+    // fires. Fail loudly instead of silently syncing nothing.
+    if (!list || list.hasNext === null || list.submissions === null) {
       throw new Error(
         "LeetCode returned no submission list — the session cookie is likely " +
           "invalid or expired. Refresh LEETCODE_SESSION and csrftoken from your browser."
       );
     }
     return {
-      hasMore: list.hasNext ?? false,
-      submissions: list.submissions ?? [],
+      hasMore: list.hasNext,
+      submissions: list.submissions,
     };
   }
 
