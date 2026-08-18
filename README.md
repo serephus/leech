@@ -76,7 +76,7 @@ jobs:
               prefix: "leech:"
               message: "Sync {{ question.title }} ({{ submission.lang }})"
             files:
-              - filename: "solutions/{{ question.title_slug }}/README.md"
+              - filename: "{{ question.title_slug }}/README.md"
                 content: |-
                   ---
                   title: "{{ question.title }}"
@@ -88,7 +88,7 @@ jobs:
                   # {{ question.title }}
 
                   {{ question.content_md }}
-              - filename: "solutions/{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
+              - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
 
@@ -120,9 +120,9 @@ filters:
   since: "2024-01-01"       # optional lower bound (date, ISO string, or unix seconds)
   until: null               # optional upper bound
 files:                      # optional; defaults to the markdown layout below
-  - filename: "solutions/{{ question.title_slug }}/README.md"
+  - filename: "{{ question.title_slug }}/README.md"
     content: "{{ question.content_md }}"
-  - filename: "solutions/{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
+  - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
   prefix: "leech:"          # message prefix; also the sync-commit marker (see Watermark)
