@@ -4,10 +4,10 @@ import type { FileTemplate, LeechConfig } from "./types";
 
 export const DEFAULT_COMMIT_PREFIX = "leech:";
 
-/** Default output layout: one folder per problem, markdown description + latest solution per language. */
+/** Default output layout: one folder per problem (under `destination`, default `solutions/`). */
 export const DEFAULT_FILES: FileTemplate[] = [
   {
-    filename: "solutions/{{ question.title_slug }}/README.md",
+    filename: "{{ question.title_slug }}/README.md",
     content: `---
 title: "{{ question.title }}"
 id: {{ question.frontend_id }}
@@ -26,7 +26,7 @@ tags: [{% for t in question.tags %}"{{ t }}"{% if not loop.last %}, {% endif %}{
 `,
   },
   {
-    filename: "solutions/{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}",
+    filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}",
     content: `{{ submission.code }}
 `,
   },
@@ -42,7 +42,7 @@ const configSchema = z.object({
     .object({ owner: z.string().min(1), name: z.string().min(1) })
     .optional(),
   branch: z.string().min(1).optional(),
-  destination: z.string().default(""),
+  destination: z.string().default("solutions"),
   filters: z
     .object({
       status: z.enum(["accepted", "all"]).default("accepted"),

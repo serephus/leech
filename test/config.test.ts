@@ -7,7 +7,7 @@ describe("parseConfig", () => {
     expect(cfg.filters.status).toBe("accepted");
     expect(cfg.commit.prefix).toBe("leech:");
     expect(cfg.commit.message).toContain("{{ question.title }}");
-    expect(cfg.destination).toBe("");
+    expect(cfg.destination).toBe("solutions");
     expect(cfg.client.delayMs).toBe(250);
     expect(cfg.branch).toBeUndefined();
     expect(cfg.repo).toBeUndefined();
@@ -17,7 +17,7 @@ describe("parseConfig", () => {
     const cfg = parseConfig("repo:\n  owner: serephus\n  name: solutions");
     expect(cfg.files).toHaveLength(2);
     expect(cfg.files[0]!.filename).toBe(
-      "solutions/{{ question.title_slug }}/README.md"
+      "{{ question.title_slug }}/README.md"
     );
     expect(cfg.files[0]!.content).toContain("{{ question.content_md }}");
     expect(cfg.files[1]!.filename).toContain("{{ submission.lang_ext }}");

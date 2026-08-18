@@ -6,9 +6,10 @@ export interface CommitFile {
 }
 
 /**
- * Creates one git commit per submission via the GitHub API. The branch ref is
- * updated after every commit, so progress survives partial failures: the next
- * run picks up from the watermark visible in history.
+ * Creates one git commit per submission via the GitHub API. Commits are
+ * chained locally (parent → child) and the branch ref is updated once per
+ * sync via {@link flush}, so a run lands atomically: either every submission
+ * is pushed or none is.
  */
 export class SyncCommitter {
   private readonly octokit: Octokit;
@@ -19,6 +20,7 @@ export class SyncCommitter {
   private readonly authorEmail: string;
   private headSha = "";
   private treeSha = "";
+  private committed = 0;
 
   constructor(
     octokit: Octokit,
@@ -93,16 +95,27 @@ export class SyncCommitter {
       committer: { name: this.authorName, email: this.authorEmail },
     });
 
+    // Chain locally only; the remote ref is advanced once in flush().
+    this.headSha = commit.data.sha;
+    this.treeSha = commit.data.tree.sha;
+    this.committed++;
+  }
+
+  /**
+   * Push all locally-created commits to the remote branch in a single ref
+   * update. No-op (returns 0) when no commits were created, e.g. dry-run or
+   * an empty sync. Returns the number of commits pushed.
+   */
+  async flush(): Promise<number> {
+    if (this.committed === 0) return 0;
     await this.octokit.git.updateRef({
       owner: this.owner,
       repo: this.repo,
       ref: `heads/${this.branch}`,
-      sha: commit.data.sha,
+      sha: this.headSha,
       force: false,
     });
-
-    this.headSha = commit.data.sha;
-    this.treeSha = commit.data.tree.sha;
+    return this.committed;
   }
 }
 

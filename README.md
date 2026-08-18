@@ -35,7 +35,9 @@ the repo public to use it cross-owner).
    (code, runtime, memory, percentiles) and the problem description via
    LeetCode's GraphQL API, render the configured files, and create **one git
    commit per submission** with `author.date = submission timestamp`.
-4. Advance the branch ref after every commit, so a failed run resumes cleanly.
+4. Push the branch ref once at the end of the sync — all commits land in a
+   single ref update, so a run is atomic (either every submission lands or
+   none does).
 
 ## Quickstart
 
@@ -74,7 +76,7 @@ jobs:
               prefix: "leech:"
               message: "Sync {{ question.title }} ({{ submission.lang }})"
             files:
-              - filename: "solutions/{{ question.title_slug }}/README.md"
+              - filename: "{{ question.title_slug }}/README.md"
                 content: |-
                   ---
                   title: "{{ question.title }}"
@@ -86,7 +88,7 @@ jobs:
                   # {{ question.title }}
 
                   {{ question.content_md }}
-              - filename: "solutions/{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
+              - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
 
@@ -118,9 +120,9 @@ filters:
   since: "2024-01-01"       # optional lower bound (date, ISO string, or unix seconds)
   until: null               # optional upper bound
 files:                      # optional; defaults to the markdown layout below
-  - filename: "solutions/{{ question.title_slug }}/README.md"
+  - filename: "{{ question.title_slug }}/README.md"
     content: "{{ question.content_md }}"
-  - filename: "solutions/{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
+  - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
   prefix: "leech:"          # message prefix; also the sync-commit marker (see Watermark)
