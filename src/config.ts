@@ -1,4 +1,4 @@
-import yaml from "js-yaml";
+import { load } from "js-yaml";
 import { z } from "zod";
 import type { FileTemplate, LeechConfig } from "./types";
 
@@ -73,7 +73,7 @@ const configSchema = z.object({
 export function parseConfig(raw: string): LeechConfig {
   let data: unknown;
   try {
-    data = yaml.load(raw);
+    data = load(raw);
   } catch (err) {
     throw new Error(`config is not valid YAML: ${(err as Error).message}`);
   }
