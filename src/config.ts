@@ -21,6 +21,8 @@ const DEFAULT_COMMIT = {
 
 const DEFAULT_CLIENT = { delayMs: 250 };
 
+const DEFAULT_RENDER = { throwOnUndefined: false };
+
 /** Default output layout: one folder per problem (under `destination`, default `solutions/`). */
 export const DEFAULT_FILES: FileTemplate[] = [
   {
@@ -94,6 +96,13 @@ const configSchema = z.object({
         .default(DEFAULT_CLIENT.delayMs),
     })
     .default({ ...DEFAULT_CLIENT }),
+  render: z
+    .object({
+      throwOnUndefined: z
+        .boolean()
+        .default(DEFAULT_RENDER.throwOnUndefined),
+    })
+    .default({ ...DEFAULT_RENDER }),
 });
 
 export function parseConfig(raw: string): LeechConfig {
@@ -138,6 +147,7 @@ export function parseConfig(raw: string): LeechConfig {
     files: parsed.data.files,
     commit: parsed.data.commit,
     client: parsed.data.client,
+    render: parsed.data.render,
   };
 }
 

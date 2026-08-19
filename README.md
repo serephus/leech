@@ -131,6 +131,8 @@ commit:
   authorEmail: leech-bot@users.noreply.github.com
 client:
   delayMs: 250              # delay between LeetCode GraphQL calls (rate-limit courtesy)
+render:
+  throwOnUndefined: false   # throw on undefined template variables (default: render empty)
 ```
 
 If `files` is omitted, the default markdown layout is used: per problem a
@@ -174,7 +176,9 @@ Custom filters: `datefmt('YYYY-MM-DD')` (tokens `YYYY MM DD HH mm ss`, UTC),
 `{{ question.frontend_id | pad(4) }}` → `0001`), `ext` (lang → file extension,
 e.g. `python3` → `py`). All standard
 [Nunjucks filters](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
-are available (`join`, `lower`, `replace`, …). Undefined variables render empty.
+are available (`join`, `lower`, `replace`, …). Undefined variables render
+empty; set `render.throwOnUndefined: true` in the config to make them throw
+instead (useful for catching typos in templates).
 
 Rendered filenames are sanitized per path segment: reserved characters
 (`/\?%*:|"<>` and control chars) and whitespace become `-`, runs of dashes

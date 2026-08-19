@@ -69,6 +69,11 @@ export interface ClientConfig {
   delayMs: number;
 }
 
+export interface RenderConfig {
+  /** Throw on undefined template variables instead of rendering them empty. */
+  throwOnUndefined: boolean;
+}
+
 export interface LeechConfig {
   repo?: { owner: string; name: string };
   branch?: string;
@@ -77,6 +82,7 @@ export interface LeechConfig {
   files: FileTemplate[];
   commit: CommitConfig;
   client: ClientConfig;
+  render: RenderConfig;
 }
 
 export interface SyncSummary {

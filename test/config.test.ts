@@ -9,6 +9,7 @@ describe("parseConfig", () => {
     expect(cfg.commit.message).toContain("{{ question.title }}");
     expect(cfg.destination).toBe("solutions");
     expect(cfg.client.delayMs).toBe(250);
+    expect(cfg.render.throwOnUndefined).toBe(false);
     expect(cfg.branch).toBeUndefined();
     expect(cfg.repo).toBeUndefined();
   });
@@ -36,6 +37,11 @@ files:
     expect(cfg.filters.languages).toEqual(["python3"]);
     expect(cfg.filters.excludeProblems).toEqual(["two-sum"]);
     expect(cfg.filters.since).toBe(Date.parse("2024-01-01") / 1000);
+  });
+
+  it("parses render options", () => {
+    const cfg = parseConfig("render:\n  throwOnUndefined: true\nfiles:\n  - filename: x.md\n    content: x");
+    expect(cfg.render.throwOnUndefined).toBe(true);
   });
 
   it("normalizes destination", () => {

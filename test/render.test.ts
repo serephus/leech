@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   buildContext,
+  configureRender,
   datefmt,
   langExt,
   pad,
@@ -114,5 +115,22 @@ describe("pad", () => {
   });
   it("supports a custom width", () => {
     expect(pad("7", 3)).toBe("007");
+  });
+});
+
+describe("throwOnUndefined", () => {
+  afterEach(() => {
+    configureRender({ throwOnUndefined: false });
+  });
+
+  it("renders undefined variables empty by default", () => {
+    expect(renderTemplate("a{{ missing }}b", {})).toBe("ab");
+  });
+
+  it("throws when throwOnUndefined is enabled", () => {
+    configureRender({ throwOnUndefined: true });
+    expect(() => renderTemplate("a{{ missing }}b", {})).toThrow(
+      /null or undefined/
+    );
   });
 });
