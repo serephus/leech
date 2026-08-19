@@ -69,11 +69,11 @@ export const filterConfigSchema = z
     since: z
       .union([z.number(), z.string()])
       .transform(parseBound)
-      .optional(),
+      .nullish(),
     until: z
       .union([z.number(), z.string()])
       .transform(parseBound)
-      .optional(),
+      .nullish(),
   })
   .default({ ...DEFAULT_FILTERS });
 

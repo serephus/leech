@@ -3,8 +3,6 @@
 Note: The whole project is vibed by DS4 flash.
 
 A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
-Replaces the stale [joshcai/leetcode-sync](https://github.com/joshcai/leetcode-sync)
-fork with a modern TypeScript implementation:
 
 - **Templated everything** — filename, content, and commit message are
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
@@ -23,7 +21,7 @@ fork with a modern TypeScript implementation:
   working action (see [Dist workflow](#dist-workflow)).
 
 Not published to the marketplace: reference it from your own repositories
-(`uses: serephus/leech@v0.1.0` works for private repos of the same owner; make
+(`uses: serephus/leech@v2` works for private repos of the same owner; make
 the repo public to use it cross-owner).
 
 ## How it works
@@ -58,15 +56,22 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: leech-sync
+  cancel-in-progress: false # queue instead of cancelling: only one sync runs at a time
+
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: serephus/leech@v0.1.0
+      - uses: serephus/leech@v2 # latest release tag (see Dist workflow)
         with:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
           leetcode-csrf-token: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+          # The `|` after `config:` means its value is one inline YAML string
+          # (the leech configuration), not structured keys of this workflow
+          # file — keep it indented under `config:`.
           config: |
             destination: "solutions"
             filters:
@@ -110,7 +115,7 @@ repo:                       # optional; defaults to the repo the action runs in
   owner: serephus
   name: my-solutions
 branch: main                # optional; defaults to the repo's default branch
-destination: solutions      # optional; files are written under this folder
+destination: solutions      # optional; files are written under this folder (default: solutions)
 filters:
   status: accepted          # accepted | all (default: accepted)
   languages: [python3]      # only these languages
@@ -232,16 +237,19 @@ fallbacks: `LEECH_CONFIG`, `LEETCODE_SESSION`, `LEETCODE_CSRF_TOKEN`,
 
 ## Dist workflow
 
-The action is referenced by tag (`uses: serephus/leech@v0.1.0`), and a tag
+The action is referenced by tag (`uses: serephus/leech@v2`), and a tag
 only works if its commit contains the bundled `dist/`. `.github/workflows/dist.yml`
 does that automatically:
 
-1. You push a tag, e.g. `git tag v0.1.0 && git push origin v0.1.0`.
+1. You push a tag, e.g. `git tag v2 && git push origin v2`.
 2. The workflow builds `dist/index.js` and `dist/cli.js`.
 3. If the built bundle differs from what the tag commit already contains, it
    commits the bundle on top of the tag's commit and **force-moves the tag** to
-   the new commit (`git tag -f v0.1.0 && git push -f origin v0.1.0`).
+   the new commit (`git tag -f v2 && git push -f origin v2`).
 4. If nothing changed, it exits without touching the tag.
+
+Because a freshly pushed tag is rebuilt this way, always reference the **newest**
+release tag (`v2`, `v3`, …) — never a tag you haven't just created or verified.
 
 The commit message is `${COMMIT_PREFIX} ${COMMIT_TEMPLATE}` with `{{tag}}`
 replaced by the tag name — customize via the workflow's `env` block. Pushes
@@ -251,11 +259,17 @@ made with `GITHUB_TOKEN` do not re-trigger workflows, so this cannot loop.
 
 ```sh
 nix develop        # node 24 + pnpm dev shell (flake.nix)
+nix build          # build the packaged CLI (packages.default)
+nix run .# -- --help  # run the packaged CLI without installing
 pnpm install
 pnpm typecheck     # tsc --noEmit
 pnpm test          # vitest
 pnpm build         # esbuild -> dist/index.js + dist/cli.js
 ```
+
+The flake packages the CLI (`nix build`, `nix run .#`); when `pnpm-lock.yaml`
+changes, `nix build` reports the new dependency hash to paste into
+`flake.nix`'s `fetchPnpmDeps`.
 
 `dist/` is not committed to the repo (gitignored); CI just verifies it builds.
 The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
@@ -267,13 +281,19 @@ The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
 
 ## Notes and caveats
 
-- LeetCode session cookies expire; refresh the secrets when the action starts
-  failing with HTTP 401/403.
+- LeetCode session cookies expire; refresh the secrets when the action fails
+  with the "session cookie is likely invalid or expired" error (LeetCode
+  answers HTTP 401/403 for rejected cookies, and HTTP 200 with an empty list
+  for expired ones — leech treats the latter as an error too).
 - LeetCode's API is unofficial and changes without notice; all requests go to
   `POST /graphql` (the old `GET /api/submissions/` list endpoint no longer
   exists).
 - Do not run two syncs against the same branch concurrently (the branch ref
   update is non-force and the second run will fail with a clear error).
+
+## References
+
+- [joshcai/leetcode-sync](https://github.com/joshcai/leetcode-sync)
 
 ## License
 

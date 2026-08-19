@@ -23,10 +23,11 @@ export function applyFilters(
       return false;
     }
     if (filters.excludeProblems.includes(entry.titleSlug)) return false;
-    if (filters.since !== undefined && entry.timestamp < filters.since) {
+    // `null`/undefined both mean "no bound" (the README documents `until: null`).
+    if (filters.since != null && entry.timestamp < filters.since) {
       return false;
     }
-    if (filters.until !== undefined && entry.timestamp > filters.until) {
+    if (filters.until != null && entry.timestamp > filters.until) {
       return false;
     }
     return true;

@@ -58,4 +58,10 @@ describe("applyFilters", () => {
     expect(applyFilters(entries, { ...base, until: 250 }).map((e) => e.id)).toEqual([1]);
     expect(applyFilters(entries, { ...base, since: 150, until: 350 }).map((e) => e.id)).toEqual([3]);
   });
+
+  it("treats null time bounds as no bound", () => {
+    expect(applyFilters(entries, { ...base, since: null, until: null }).map((e) => e.id)).toEqual([1, 3, 4]);
+    expect(applyFilters(entries, { ...base, since: null, until: 250 }).map((e) => e.id)).toEqual([1]);
+    expect(applyFilters(entries, { ...base, since: 250, until: null }).map((e) => e.id)).toEqual([3, 4]);
+  });
 });
