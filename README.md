@@ -58,6 +58,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: leech-sync
+  cancel-in-progress: false # queue instead of cancelling: only one sync runs at a time
+
 jobs:
   sync:
     runs-on: ubuntu-latest
