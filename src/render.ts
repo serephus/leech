@@ -1,6 +1,7 @@
 import nunjucks from "nunjucks";
 import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
+import * as domino from "@mixmark-io/domino";
 import type { Question, SubmissionDetails } from "./types";
 
 const LANG_TO_EXTENSION: Record<string, string> = {
@@ -119,6 +120,141 @@ export function toMarkdown(html: string): string {
 }
 
 /* ------------------------------------------------------------------ */
+/* HTML -> Typst                                                       */
+/* ------------------------------------------------------------------ */
+
+const TYPST_HEADING_PREFIX = [
+  "",
+  "= ",
+  "== ",
+  "=== ",
+  "==== ",
+  "===== ",
+  "====== ",
+];
+
+/** Escapes Typst markup special characters in plain text. */
+function escapeTypstText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\$/g, "\\$")
+    .replace(/#/g, "\\#")
+    .replace(/@/g, "\\@")
+    .replace(/\*/g, "\\*")
+    .replace(/_/g, "\\_");
+}
+
+/** Renders the children of `node` as inline Typst markup. */
+function typstInline(node: domino.DomNode): string {
+  let out = "";
+  for (const child of node.childNodes) {
+    out += typstNode(child);
+  }
+  return out;
+}
+
+function typstNode(node: domino.DomNode): string {
+  if (node.nodeType === 3) return escapeTypstText(node.textContent ?? "");
+  const tag = node.nodeName.toLowerCase();
+  switch (tag) {
+    case "p":
+    case "div":
+      return `${typstInline(node).trim()}\n\n`;
+    case "br":
+      return "\\\\";
+    case "strong":
+    case "b":
+      return `*${typstInline(node)}*`;
+    case "em":
+    case "i":
+      return `_${typstInline(node)}_`;
+    case "code":
+      return `\`${node.textContent ?? ""}\``;
+    case "pre": {
+      const code = node.childNodes.find((c) => c.nodeName === "CODE");
+      const lang =
+        code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
+      const text = code?.textContent ?? node.textContent ?? "";
+      const fence = text.includes("```") ? "````" : "```";
+      return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
+    }
+    case "h1":
+    case "h2":
+    case "h3":
+    case "h4":
+    case "h5":
+    case "h6": {
+      const level = Number(tag[1]);
+      return `${TYPST_HEADING_PREFIX[level] ?? ""}${typstInline(node).trim()}\n\n`;
+    }
+    case "ul":
+    case "ol": {
+      const marker = tag === "ol" ? "+ " : "- ";
+      let out = "";
+      for (const li of node.childNodes) {
+        if (li.nodeName !== "LI") continue;
+        out += `\n${marker}${typstInline(li).trim()}`;
+      }
+      return `${out}\n\n`;
+    }
+    case "a": {
+      const href = node.getAttribute("href") ?? "";
+      const text = typstInline(node).trim();
+      return text ? `#link("${href}")[${text}]` : `#link("${href}")`;
+    }
+    case "img":
+      return `#image("${node.getAttribute("src") ?? ""}")`;
+    case "sup":
+      return `^${typstInline(node)}`;
+    case "sub":
+      return `_${typstInline(node)}`;
+    case "del":
+    case "s":
+    case "strike":
+      return `#strike[${typstInline(node)}]`;
+    case "u":
+      return `#underline[${typstInline(node)}]`;
+    case "mark":
+      return `#highlight[${typstInline(node)}]`;
+    case "small":
+      return `#small[${typstInline(node)}]`;
+    case "blockquote":
+      return `#quote[${typstInline(node)}]`;
+    case "hr":
+      return `#line(length: 100%)\n\n`;
+    case "script":
+    case "style":
+    case "head":
+    case "title":
+    case "meta":
+    case "noscript":
+    case "template":
+      return "";
+    case "table": {
+      const rows = node.childNodes.filter((n) => n.nodeName === "TR");
+      if (rows.length === 0) return "";
+      const cells = rows.map((r) =>
+        r.childNodes
+          .filter((n) => n.nodeName === "TD" || n.nodeName === "TH")
+          .map((c) => typstInline(c).trim())
+      );
+      const cols = Math.max(...cells.map((r) => r.length));
+      const flat = cells.flat();
+      return `#table(columns: ${cols}, ${flat.map((c) => `[${c}]`).join(", ")})\n\n`;
+    }
+    default:
+      return typstInline(node);
+  }
+}
+
+/** Converts LeetCode problem-description HTML to Typst markup. */
+export function toTypst(html: string): string {
+  if (!html.trim()) return "";
+  const doc = domino.createDocument(html);
+  return typstInline(doc.body).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
+/* ------------------------------------------------------------------ */
 /* Templates (Nunjucks)                                                */
 /* ------------------------------------------------------------------ */
 
@@ -222,6 +358,7 @@ export interface TemplateContext {
     url: string;
     content_html: string;
     content_md: string;
+    content_typst: string;
     acceptance_rate: number | null;
     is_paid_only: boolean;
   };
@@ -254,6 +391,7 @@ export function buildContext(
       url: `https://leetcode.com/problems/${question.titleSlug}/`,
       content_html: question.contentHtml,
       content_md: toMarkdown(question.contentHtml),
+      content_typst: toTypst(question.contentHtml),
       acceptance_rate: question.acceptanceRate,
       is_paid_only: question.isPaidOnly,
     },

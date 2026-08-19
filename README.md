@@ -8,8 +8,9 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
   to one commit and may produce any number of files.
 - **Problem descriptions** — the LeetCode problem HTML is converted to
-  GitHub-flavored markdown (`question.content_md`) with custom rules for
-  `<sup>`/`<sub>`, code blocks, and tables.
+  plain common markdown (`question.content_md`) and [Typst](https://typst.app)
+  markup (`question.content_typst`) with custom rules for `<sup>`/`<sub>`,
+  code blocks, and tables.
 - **Submission filtering** — status, language, problem, and time-window filters.
 - **Robust watermark** — no state files: the last synced submission is derived
   from commit history (see [Watermark](#watermark)).
@@ -170,7 +171,8 @@ Variables available in filename, content, and commit-message templates
 - `question.tags` — array of topic tag names
 - `question.url` — `https://leetcode.com/problems/<slug>/`
 - `question.content_html` — raw problem HTML
-- `question.content_md` — converted GitHub-flavored markdown
+- `question.content_md` — converted plain common markdown
+- `question.content_typst` — converted [Typst](https://typst.app) markup
 - `question.acceptance_rate` — number (`null` when unavailable)
 - `question.is_paid_only` — boolean
 
@@ -257,7 +259,6 @@ changes, `nix build` reports the new dependency hash to paste into
 
 ## Roadmap
 
-- Typst renderer for problem descriptions (`question.content_typst`).
 - Hooks (pre/post sync, per-submission).
 
 ## Notes and caveats
