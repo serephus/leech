@@ -253,7 +253,8 @@ pnpm test          # vitest
 pnpm build         # esbuild -> dist/index.js + dist/cli.js
 ```
 
-`dist/` is committed: CI enforces that it matches the sources.
+`dist/` is not committed to the repo (gitignored); CI just verifies it builds.
+The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
 
 ## Roadmap
 
