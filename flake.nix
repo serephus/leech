@@ -51,7 +51,11 @@
 
           meta = {
             description = "Sync LeetCode submissions to a git repository (CLI)";
-            license = pkgs.lib.licenses.mit;
+            license = {
+              fullName = "GLWT (Good Luck With That) Public License";
+              shortName = "GLWTPL";
+              url = "https://github.com/me-shaon/GLWTPL";
+            };
             mainProgram = "leech";
           };
         };
