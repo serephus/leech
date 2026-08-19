@@ -36,54 +36,15 @@ export interface Question {
   isPaidOnly: boolean;
 }
 
-export interface FileTemplate {
-  /** Nunjucks template for the file path (relative to `destination`). */
-  filename: string;
-  /** Nunjucks template for the file content. */
-  content: string;
-}
-
-export interface FilterConfig {
-  status: "accepted" | "all";
-  languages: string[];
-  excludeLanguages: string[];
-  problems: string[];
-  excludeProblems: string[];
-  /** Unix seconds. */
-  since?: number;
-  /** Unix seconds. */
-  until?: number;
-}
-
-export interface CommitConfig {
-  /** Message prefix. Also the marker identifying sync commits in history (watermark). */
-  prefix: string;
-  /** Nunjucks template rendered after the prefix. */
-  message: string;
-  authorName: string;
-  authorEmail: string;
-}
-
-export interface ClientConfig {
-  /** Delay between LeetCode GraphQL calls, in ms. */
-  delayMs: number;
-}
-
-export interface RenderConfig {
-  /** Throw on undefined template variables instead of rendering them empty. */
-  throwOnUndefined: boolean;
-}
-
-export interface LeechConfig {
-  repo?: { owner: string; name: string };
-  branch?: string;
-  destination: string;
-  filters: FilterConfig;
-  files: FileTemplate[];
-  commit: CommitConfig;
-  client: ClientConfig;
-  render: RenderConfig;
-}
+// Config types are derived from the zod schema in src/config.ts.
+export type {
+  FileTemplate,
+  FilterConfig,
+  CommitConfig,
+  ClientConfig,
+  RenderConfig,
+  LeechConfig,
+} from "./config";
 
 export interface SyncSummary {
   /** Submissions considered (newer than the watermark). */

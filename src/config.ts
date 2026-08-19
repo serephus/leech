@@ -1,6 +1,5 @@
 import { load } from "js-yaml";
 import { z } from "zod";
-import type { FileTemplate, LeechConfig } from "./types";
 
 export const DEFAULT_COMMIT_PREFIX = "leech:";
 
@@ -56,54 +55,79 @@ const fileTemplateSchema = z.object({
   content: z.string(),
 });
 
-const configSchema = z.object({
+export const filterConfigSchema = z
+  .object({
+    status: z.enum(["accepted", "all"]).default(DEFAULT_FILTERS.status),
+    languages: z.array(z.string()).default(DEFAULT_FILTERS.languages),
+    excludeLanguages: z
+      .array(z.string())
+      .default(DEFAULT_FILTERS.excludeLanguages),
+    problems: z.array(z.string()).default(DEFAULT_FILTERS.problems),
+    excludeProblems: z
+      .array(z.string())
+      .default(DEFAULT_FILTERS.excludeProblems),
+    since: z
+      .union([z.number(), z.string()])
+      .transform(parseBound)
+      .optional(),
+    until: z
+      .union([z.number(), z.string()])
+      .transform(parseBound)
+      .optional(),
+  })
+  .default({ ...DEFAULT_FILTERS });
+
+export const commitConfigSchema = z
+  .object({
+    prefix: z.string().min(1).default(DEFAULT_COMMIT.prefix),
+    message: z.string().default(DEFAULT_COMMIT.message),
+    authorName: z.string().default(DEFAULT_COMMIT.authorName),
+    authorEmail: z.string().default(DEFAULT_COMMIT.authorEmail),
+  })
+  .default({ ...DEFAULT_COMMIT });
+
+export const clientConfigSchema = z
+  .object({
+    delayMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(10000)
+      .default(DEFAULT_CLIENT.delayMs),
+  })
+  .default({ ...DEFAULT_CLIENT });
+
+export const renderConfigSchema = z
+  .object({
+    throwOnUndefined: z
+      .boolean()
+      .default(DEFAULT_RENDER.throwOnUndefined),
+  })
+  .default({ ...DEFAULT_RENDER });
+
+export const configSchema = z.object({
   repo: z
     .object({ owner: z.string().min(1), name: z.string().min(1) })
     .optional(),
   branch: z.string().min(1).optional(),
-  destination: z.string().default("solutions"),
-  filters: z
-    .object({
-      status: z.enum(["accepted", "all"]).default(DEFAULT_FILTERS.status),
-      languages: z.array(z.string()).default(DEFAULT_FILTERS.languages),
-      excludeLanguages: z
-        .array(z.string())
-        .default(DEFAULT_FILTERS.excludeLanguages),
-      problems: z.array(z.string()).default(DEFAULT_FILTERS.problems),
-      excludeProblems: z
-        .array(z.string())
-        .default(DEFAULT_FILTERS.excludeProblems),
-      since: z.union([z.number(), z.string()]).optional(),
-      until: z.union([z.number(), z.string()]).optional(),
-    })
-    .default({ ...DEFAULT_FILTERS }),
+  destination: z
+    .string()
+    .default("solutions")
+    .transform(normalizeDestination),
+  filters: filterConfigSchema,
   files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
-  commit: z
-    .object({
-      prefix: z.string().min(1).default(DEFAULT_COMMIT.prefix),
-      message: z.string().default(DEFAULT_COMMIT.message),
-      authorName: z.string().default(DEFAULT_COMMIT.authorName),
-      authorEmail: z.string().default(DEFAULT_COMMIT.authorEmail),
-    })
-    .default({ ...DEFAULT_COMMIT }),
-  client: z
-    .object({
-      delayMs: z
-        .number()
-        .int()
-        .min(0)
-        .max(10000)
-        .default(DEFAULT_CLIENT.delayMs),
-    })
-    .default({ ...DEFAULT_CLIENT }),
-  render: z
-    .object({
-      throwOnUndefined: z
-        .boolean()
-        .default(DEFAULT_RENDER.throwOnUndefined),
-    })
-    .default({ ...DEFAULT_RENDER }),
+  commit: commitConfigSchema,
+  client: clientConfigSchema,
+  render: renderConfigSchema,
 });
+
+// Config types are derived from the zod schema so they cannot drift from it.
+export type FileTemplate = z.infer<typeof fileTemplateSchema>;
+export type FilterConfig = z.infer<typeof filterConfigSchema>;
+export type CommitConfig = z.infer<typeof commitConfigSchema>;
+export type ClientConfig = z.infer<typeof clientConfigSchema>;
+export type RenderConfig = z.infer<typeof renderConfigSchema>;
+export type LeechConfig = z.infer<typeof configSchema>;
 
 export function parseConfig(raw: string): LeechConfig {
   let data: unknown;
@@ -125,30 +149,7 @@ export function parseConfig(raw: string): LeechConfig {
     throw new Error(`invalid config: ${details}`);
   }
 
-  return {
-    repo: parsed.data.repo,
-    branch: parsed.data.branch,
-    destination: normalizeDestination(parsed.data.destination),
-    filters: {
-      status: parsed.data.filters.status,
-      languages: parsed.data.filters.languages,
-      excludeLanguages: parsed.data.filters.excludeLanguages,
-      problems: parsed.data.filters.problems,
-      excludeProblems: parsed.data.filters.excludeProblems,
-      since:
-        parsed.data.filters.since === undefined
-          ? undefined
-          : parseBound(parsed.data.filters.since),
-      until:
-        parsed.data.filters.until === undefined
-          ? undefined
-          : parseBound(parsed.data.filters.until),
-    },
-    files: parsed.data.files,
-    commit: parsed.data.commit,
-    client: parsed.data.client,
-    render: parsed.data.render,
-  };
+  return parsed.data;
 }
 
 function normalizeDestination(dest: string): string {

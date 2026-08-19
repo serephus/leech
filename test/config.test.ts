@@ -54,6 +54,13 @@ files:
     expect(() => parseConfig("not: [valid: yaml")).toThrow(/not valid YAML/);
     expect(() => parseConfig("just a string")).toThrow(/must be a YAML mapping/);
   });
+
+  it("rejects a garbage filter bound through the schema", () => {
+    // parseBound's raw error propagates (same as before the schema refactor).
+    expect(() =>
+      parseConfig("filters:\n  since: not-a-date\nfiles:\n  - filename: x.md\n    content: x")
+    ).toThrow(/cannot parse date bound/);
+  });
 });
 
 describe("parseBound", () => {
