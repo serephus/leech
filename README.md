@@ -3,8 +3,6 @@
 Note: The whole project is vibed by DS4 flash.
 
 A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
-Replaces the stale [joshcai/leetcode-sync](https://github.com/joshcai/leetcode-sync)
-fork with a modern TypeScript implementation:
 
 - **Templated everything** — filename, content, and commit message are
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
@@ -289,8 +287,7 @@ The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
 
 ## References
 
-- [joshcai/leetcode-sync](https://github.com/joshcai/leetcode-sync) — the
-  original LeetCode sync action this project replaces.
+- [joshcai/leetcode-sync](https://github.com/joshcai/leetcode-sync)
 
 ## License
 
