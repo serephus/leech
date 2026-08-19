@@ -67,6 +67,9 @@ jobs:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
           leetcode-csrf-token: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+          # The `|` after `config:` means its value is one inline YAML string
+          # (the leech configuration), not structured keys of this workflow
+          # file — keep it indented under `config:`.
           config: |
             destination: "solutions"
             filters:
