@@ -55,6 +55,14 @@ files:
     expect(() => parseConfig("just a string")).toThrow(/must be a YAML mapping/);
   });
 
+  it("accepts null filter bounds (documented as \"no bound\")", () => {
+    const cfg = parseConfig(
+      "filters:\n  since: null\n  until: null\nfiles:\n  - filename: x.md\n    content: x"
+    );
+    expect(cfg.filters.since).toBeNull();
+    expect(cfg.filters.until).toBeNull();
+  });
+
   it("rejects a garbage filter bound through the schema", () => {
     // parseBound's raw error propagates (same as before the schema refactor).
     expect(() =>
