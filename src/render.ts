@@ -123,13 +123,28 @@ export function toMarkdown(html: string): string {
 /* ------------------------------------------------------------------ */
 
 let env: nunjucks.Environment | null = null;
+let renderOptions: nunjucks.ConfigureOptions = {
+  autoescape: false,
+  throwOnUndefined: false,
+};
+
+/**
+ * Applies rendering options before templates render (rebuilds the template
+ * environment). Call once with the parsed config, e.g. from runSync.
+ */
+export function configureRender(options: {
+  throwOnUndefined: boolean;
+}): void {
+  renderOptions = {
+    autoescape: false,
+    throwOnUndefined: options.throwOnUndefined,
+  };
+  env = null;
+}
 
 function getEnv(): nunjucks.Environment {
   if (env === null) {
-    env = new nunjucks.Environment(null, {
-      autoescape: false,
-      throwOnUndefined: false,
-    });
+    env = new nunjucks.Environment(null, renderOptions);
     env.addFilter("datefmt", datefmt);
     env.addFilter("slugify", slugify);
     env.addFilter("pad", pad);

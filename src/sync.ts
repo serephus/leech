@@ -2,7 +2,12 @@ import type { Octokit } from "@octokit/rest";
 import { applyFilters } from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
 import { LeetCodeClient } from "./leetcode";
-import { buildContext, renderFilename, renderTemplate } from "./render";
+import {
+  buildContext,
+  configureRender,
+  renderFilename,
+  renderTemplate,
+} from "./render";
 import { scanWatermark } from "./state";
 import type { LeechConfig, Question, SubmissionListEntry, SyncSummary } from "./types";
 
@@ -17,6 +22,8 @@ export interface RunOptions {
 
 export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   const { octokit, client, config, dryRun = false, verbose = false } = opts;
+
+  configureRender(config.render);
 
   const owner = config.repo?.owner ?? opts.currentRepo?.owner;
   const repo = config.repo?.name ?? opts.currentRepo?.name;
