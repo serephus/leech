@@ -259,11 +259,17 @@ made with `GITHUB_TOKEN` do not re-trigger workflows, so this cannot loop.
 
 ```sh
 nix develop        # node 24 + pnpm dev shell (flake.nix)
+nix build          # build the packaged CLI (packages.default)
+nix run .# -- --help  # run the packaged CLI without installing
 pnpm install
 pnpm typecheck     # tsc --noEmit
 pnpm test          # vitest
 pnpm build         # esbuild -> dist/index.js + dist/cli.js
 ```
+
+The flake packages the CLI (`nix build`, `nix run .#`); when `pnpm-lock.yaml`
+changes, `nix build` reports the new dependency hash to paste into
+`flake.nix`'s `fetchPnpmDeps`.
 
 `dist/` is not committed to the repo (gitignored); CI just verifies it builds.
 The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
