@@ -20,10 +20,6 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   the bundle commit, so `uses: serephus/leech@vX.Y.Z` always resolves to a
   working action (see [Dist workflow](#dist-workflow)).
 
-Not published to the marketplace: reference it from your own repositories
-(`uses: serephus/leech@v2` works for private repos of the same owner; make
-the repo public to use it cross-owner).
-
 ## How it works
 
 1. Fetch submissions newer than the watermark via LeetCode's GraphQL API
@@ -72,6 +68,8 @@ jobs:
           # The `|` after `config:` means its value is one inline YAML string
           # (the leech configuration), not structured keys of this workflow
           # file — keep it indented under `config:`.
+          # the structured yaml config won't work because github action
+          # only accept flatten key-value pairs inputs
           config: |
             destination: "solutions"
             filters:
@@ -130,7 +128,7 @@ files:                      # optional; defaults to the markdown layout below
   - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
-  prefix: "leech:"          # message prefix; also the sync-commit marker (see Watermark)
+  prefix: "leech: "          # message prefix; also the sync-commit marker (see Watermark)
   message: "Sync {{ question.title }} ({{ submission.lang }})"
   authorName: leech-bot
   authorEmail: leech-bot@users.noreply.github.com
@@ -237,23 +235,9 @@ fallbacks: `LEECH_CONFIG`, `LEETCODE_SESSION`, `LEETCODE_CSRF_TOKEN`,
 
 ## Dist workflow
 
-The action is referenced by tag (`uses: serephus/leech@v2`), and a tag
-only works if its commit contains the bundled `dist/`. `.github/workflows/dist.yml`
-does that automatically:
-
-1. You push a tag, e.g. `git tag v2 && git push origin v2`.
-2. The workflow builds `dist/index.js` and `dist/cli.js`.
-3. If the built bundle differs from what the tag commit already contains, it
-   commits the bundle on top of the tag's commit and **force-moves the tag** to
-   the new commit (`git tag -f v2 && git push -f origin v2`).
-4. If nothing changed, it exits without touching the tag.
-
-Because a freshly pushed tag is rebuilt this way, always reference the **newest**
-release tag (`v2`, `v3`, …) — never a tag you haven't just created or verified.
-
-The commit message is `${COMMIT_PREFIX} ${COMMIT_TEMPLATE}` with `{{tag}}`
-replaced by the tag name — customize via the workflow's `env` block. Pushes
-made with `GITHUB_TOKEN` do not re-trigger workflows, so this cannot loop.
+The action is referenced by tag (`uses: serephus/leech@v2`), `dist/` is not
+committed to the repo (gitignored); CI just verifies it builds. The Dist
+workflow bundles it into the tag at release time.
 
 ## Development
 
@@ -271,9 +255,6 @@ The flake packages the CLI (`nix build`, `nix run .#`); when `pnpm-lock.yaml`
 changes, `nix build` reports the new dependency hash to paste into
 `flake.nix`'s `fetchPnpmDeps`.
 
-`dist/` is not committed to the repo (gitignored); CI just verifies it builds.
-The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
-
 ## Roadmap
 
 - Typst renderer for problem descriptions (`question.content_typst`).
@@ -288,8 +269,6 @@ The [Dist workflow](#dist-workflow) bundles it into the tag at release time.
 - LeetCode's API is unofficial and changes without notice; all requests go to
   `POST /graphql` (the old `GET /api/submissions/` list endpoint no longer
   exists).
-- Do not run two syncs against the same branch concurrently (the branch ref
-  update is non-force and the second run will fail with a clear error).
 
 ## References
 
