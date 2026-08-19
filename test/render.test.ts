@@ -8,6 +8,7 @@ import {
   renderFilename,
   renderTemplate,
   toMarkdown,
+  toTypst,
 } from "../src/render";
 import type { Question, SubmissionDetails } from "../src/types";
 
@@ -48,6 +49,41 @@ describe("toMarkdown", () => {
 
   it("handles empty input", () => {
     expect(toMarkdown("")).toBe("");
+  });
+});
+
+describe("toTypst", () => {
+  it("converts common LeetCode HTML", () => {
+    const ts = toTypst(question.contentHtml);
+    expect(ts).toContain("Given `nums`, return _indices_.");
+    expect(ts).toContain("```python");
+    expect(ts).toContain("Up to 10^9.");
+    expect(ts).toContain("- a < b");
+  });
+
+  it("converts sup/sub to native typst syntax", () => {
+    const ts = toTypst("<p>H<sub>2</sub>O and 10<sup>9</sup></p>");
+    expect(ts).toContain("H_2O and 10^9");
+  });
+
+  it("escapes typst special characters in text", () => {
+    expect(toTypst("<p>cost $10, a * b, #tag</p>")).toContain(
+      "cost \\$10, a \\* b, \\#tag"
+    );
+  });
+
+  it("converts links, formatting, and strikethrough", () => {
+    expect(
+      toTypst('<p><a href="https://e.com">x</a> <strong>b</strong> <del>d</del></p>')
+    ).toContain('#link("https://e.com")[x] *b* #strike[d]');
+  });
+
+  it("drops script and style", () => {
+    expect(toTypst("<p>x</p><script>alert(1)</script>")).toBe("x\n");
+  });
+
+  it("handles empty input", () => {
+    expect(toTypst("")).toBe("");
   });
 });
 
