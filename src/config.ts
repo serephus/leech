@@ -40,7 +40,7 @@ tags: [{% for t in question.tags %}"{{ t }}"{% if not loop.last %}, {% endif %}{
 
 # {{ question.title }}
 
-{{ question.content_md }}
+{{ question.content | toMarkdown({ gfm: true }) }}
 `,
   },
   {

@@ -4,6 +4,8 @@ import {
   configureRender,
   datefmt,
   langExt,
+  makeToMarkdown,
+  makeToTypst,
   pad,
   renderFilename,
   renderTemplate,
@@ -49,6 +51,95 @@ describe("toMarkdown", () => {
 
   it("handles empty input", () => {
     expect(toMarkdown("")).toBe("");
+  });
+
+  it("does not emit GFM-only syntax", () => {
+    const md = toMarkdown(
+      "<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>"
+    );
+    expect(md).not.toContain("|");
+  });
+});
+
+describe("toMarkdown gfm mode", () => {
+  it("converts tables to pipe tables", () => {
+    const md = toMarkdown(
+      "<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>",
+      { gfm: true }
+    );
+    expect(md).toContain("| a | b |");
+    expect(md).toContain("| 1 | 2 |");
+  });
+
+  it("converts strikethrough", () => {
+    expect(toMarkdown("<p><del>gone</del></p>", { gfm: true })).toContain(
+      "~~gone~~"
+    );
+  });
+
+  it("handles empty input", () => {
+    expect(toMarkdown("", { gfm: true })).toBe("");
+  });
+});
+
+describe("makeToMarkdown", () => {
+  it("applies factory options", () => {
+    const md = makeToMarkdown({ headingStyle: "setext" })("<h1>Hi</h1>");
+    expect(md).toContain("Hi\n==");
+  });
+
+  it("per-call options override factory options", () => {
+    const md = makeToMarkdown({ headingStyle: "setext" })("<h1>Hi</h1>", {
+      headingStyle: "atx",
+    });
+    expect(md).toContain("# Hi");
+  });
+
+  it("enables gfm from factory options", () => {
+    const md = makeToMarkdown({ gfm: true })(
+      "<table><tr><th>a</th></tr><tr><td>1</td></tr></table>"
+    );
+    expect(md).toContain("|");
+  });
+
+  it("disables tables in gfm mode", () => {
+    const md = makeToMarkdown({ gfm: true, tables: false })(
+      "<table><tr><th>a</th></tr><tr><td>1</td></tr></table>"
+    );
+    expect(md).not.toContain("|");
+  });
+
+  it("disables strikethrough in gfm mode", () => {
+    const md = makeToMarkdown({ gfm: true, strikethrough: false })(
+      "<p><del>gone</del></p>"
+    );
+    expect(md).not.toContain("~");
+  });
+});
+
+describe("makeToTypst", () => {
+  it("applies custom heading prefixes", () => {
+    const ts = makeToTypst({ headingPrefixes: ["", "H1 ", "H2 "] })(
+      "<h2>Hi</h2>"
+    );
+    expect(ts).toContain("H2 Hi");
+  });
+
+  it("customizes the code fence", () => {
+    const ts = makeToTypst({ codeFence: "~~~" })(
+      '<pre><code class="language-python">x\n</code></pre>'
+    );
+    expect(ts).toContain("~~~python");
+  });
+
+  it("disables escaping", () => {
+    const ts = makeToTypst({ escape: false })("<p>cost $10</p>");
+    expect(ts).toContain("cost $10");
+  });
+
+  it("customizes the horizontal rule", () => {
+    const ts = makeToTypst({ hr: "#line()" })("<hr>");
+    expect(ts).toContain("#line()");
   });
 });
 
@@ -99,6 +190,28 @@ describe("templates", () => {
     expect(renderTemplate("{{ question.tags | join(', ') }}", ctx)).toBe(
       "Array, Hash Table"
     );
+    expect(renderTemplate("{{ question.content | toMarkdown }}", ctx)).toContain(
+      "Given `nums`, return *indices*"
+    );
+    expect(renderTemplate("{{ question.content | toMarkdown({ gfm: true }) }}", ctx)).toContain(
+      "Given `nums`, return *indices*"
+    );
+    expect(renderTemplate("{{ question.content | toTypst }}", ctx)).toContain(
+      "Given `nums`, return _indices_."
+    );
+  });
+
+  it("passes filter options from templates", () => {
+    expect(
+      renderTemplate("{{ html | toMarkdown({ headingStyle: 'setext' }) }}", {
+        html: "<h1>Hi</h1>",
+      })
+    ).toContain("Hi\n==");
+    expect(
+      renderTemplate("{{ html | toMarkdown({ gfm: true }) }}", {
+        html: "<table><tr><th>a</th></tr></table>",
+      })
+    ).toContain("|");
   });
 
   it("renders undefined variables as empty", () => {

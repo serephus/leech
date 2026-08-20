@@ -1,6 +1,10 @@
 import nunjucks from "nunjucks";
 import TurndownService from "turndown";
-import { gfm } from "turndown-plugin-gfm";
+import {
+  strikethrough as gfmStrikethrough,
+  tables as gfmTables,
+  taskListItems as gfmTaskListItems,
+} from "turndown-plugin-gfm";
 import * as domino from "@mixmark-io/domino";
 import type { Question, SubmissionDetails } from "./types";
 
@@ -92,46 +96,135 @@ export function datefmt(value: number | string | Date, fmt = "YYYY-MM-DD"): stri
 /* HTML -> Markdown                                                    */
 /* ------------------------------------------------------------------ */
 
-let turndown: TurndownService | null = null;
+/** Options for markdown conversion (Turndown options plus GFM toggles). */
+export interface MarkdownOptions {
+  /** Enable GitHub-flavored markdown (tables, strikethrough, task lists); default false. */
+  gfm?: boolean;
+  /** Convert tables (default true; only applies when gfm is enabled). */
+  tables?: boolean;
+  /** Convert strikethrough (default true; only applies when gfm is enabled). */
+  strikethrough?: boolean;
+  /** Convert task-list checkboxes (default true; only applies when gfm is enabled). */
+  taskListItems?: boolean;
+  headingStyle?: "setext" | "atx";
+  hr?: string;
+  bulletListMarker?: "-" | "*" | "+";
+  codeBlockStyle?: "indented" | "fenced";
+  fence?: "```" | "~~~";
+  emDelimiter?: "_" | "*";
+  strongDelimiter?: "__" | "**";
+  linkStyle?: "inlined" | "referenced";
+  linkReferenceStyle?: "full" | "collapsed" | "shortcut";
+}
 
-/** Converts LeetCode problem-description HTML to GitHub-flavored markdown. */
-export function toMarkdown(html: string): string {
-  if (turndown === null) {
-    turndown = new TurndownService({
-      headingStyle: "atx",
-      codeBlockStyle: "fenced",
-      bulletListMarker: "-",
-      emDelimiter: "*",
-      strongDelimiter: "**",
-    });
-    turndown.use(gfm); // tables, strikethrough, task lists
-    turndown.addRule("superscript", {
-      filter: ["sup"],
-      replacement: (content: string) => `^${content}^`,
-    });
-    turndown.addRule("subscript", {
-      filter: ["sub"],
-      replacement: (content: string) => `~${content}~`,
-    });
+export type MarkdownFilter = (html: string, options?: MarkdownOptions) => string;
+
+export const MARKDOWN_DEFAULTS = {
+  headingStyle: "atx",
+  codeBlockStyle: "fenced",
+  bulletListMarker: "-",
+  emDelimiter: "*",
+  strongDelimiter: "**",
+} as const;
+
+const turndownCache = new Map<string, TurndownService>();
+
+function createTurndown(options: MarkdownOptions): TurndownService {
+  const service = new TurndownService({ ...MARKDOWN_DEFAULTS, ...options });
+  if (options.gfm ?? false) {
+    const {
+      tables = true,
+      strikethrough = true,
+      taskListItems = true,
+    } = options;
+    if (tables) gfmTables(service);
+    if (taskListItems) gfmTaskListItems(service);
+    if (strikethrough) {
+      gfmStrikethrough(service);
+      // turndown-plugin-gfm's strikethrough rule emits single tildes (pre-GFM
+      // spec); GitHub uses `~~`, so override it.
+      service.addRule("strikethrough", {
+        filter: ["del", "s", "strike"],
+        replacement: (content: string) => `~~${content}~~`,
+      });
+    }
   }
+  service.addRule("superscript", {
+    filter: ["sup"],
+    replacement: (content: string) => `^${content}^`,
+  });
+  service.addRule("subscript", {
+    filter: ["sub"],
+    replacement: (content: string) => `~${content}~`,
+  });
+  return service;
+}
+
+function getTurndown(options: MarkdownOptions): TurndownService {
+  const key = JSON.stringify(options);
+  let service = turndownCache.get(key);
+  if (!service) {
+    service = createTurndown(options);
+    turndownCache.set(key, service);
+  }
+  return service;
+}
+
+function convertMarkdown(html: string, options: MarkdownOptions): string {
   if (!html.trim()) return "";
-  const md = turndown.turndown(html);
+  const md = getTurndown(options).turndown(html);
   return md.replace(/\n{3,}/g, "\n\n").trim() + "\n";
 }
+
+/**
+ * Creates a markdown conversion filter. The returned filter also accepts
+ * per-call options that override the factory options. Pass `{ gfm: true }`
+ * for GitHub-flavored markdown (tables, strikethrough, task lists).
+ */
+export function makeToMarkdown(options?: MarkdownOptions): MarkdownFilter {
+  return (html, callOptions) =>
+    convertMarkdown(html, { ...options, ...callOptions });
+}
+
+/** Default markdown filter (standard; pass `{ gfm: true }` for GitHub-flavored). */
+export const toMarkdown = makeToMarkdown();
+/**
+ * GitHub-flavored variant: `toMarkdown` preconfigured with `{ gfm: true }`.
+ * Kept for compatibility; prefer `{{ content | toMarkdown({ gfm: true }) }}`.
+ */
+export const toGfm = makeToMarkdown({ gfm: true });
 
 /* ------------------------------------------------------------------ */
 /* HTML -> Typst                                                       */
 /* ------------------------------------------------------------------ */
 
-const TYPST_HEADING_PREFIX = [
-  "",
-  "= ",
-  "== ",
-  "=== ",
-  "==== ",
-  "===== ",
-  "====== ",
-];
+/** Options for Typst conversion. */
+export interface TypstOptions {
+  /** Heading prefixes for levels 1-6 (default `["", "= ", "== ", ...]`). */
+  headingPrefixes?: string[];
+  /** Code fence marker (default "```"). */
+  codeFence?: string;
+  /** Escape Typst special characters in text (default true). */
+  escape?: boolean;
+  /** Horizontal-rule markup (default `#line(length: 100%)`). */
+  hr?: string;
+}
+
+export type TypstFilter = (html: string, options?: TypstOptions) => string;
+
+interface TypstRendererOptions {
+  headingPrefixes: string[];
+  codeFence: string;
+  escape: boolean;
+  hr: string;
+}
+
+const TYPST_DEFAULTS: TypstRendererOptions = {
+  headingPrefixes: ["", "= ", "== ", "=== ", "==== ", "===== ", "====== "],
+  codeFence: "```",
+  escape: true,
+  hr: "#line(length: 100%)",
+};
 
 /** Escapes Typst markup special characters in plain text. */
 function escapeTypstText(text: string): string {
@@ -144,115 +237,136 @@ function escapeTypstText(text: string): string {
     .replace(/_/g, "\\_");
 }
 
-/** Renders the children of `node` as inline Typst markup. */
-function typstInline(node: domino.DomNode): string {
-  let out = "";
-  for (const child of node.childNodes) {
-    out += typstNode(child);
-  }
-  return out;
-}
+function makeTypstConverter(options: TypstOptions): (html: string) => string {
+  const opts: TypstRendererOptions = { ...TYPST_DEFAULTS, ...options };
 
-function typstNode(node: domino.DomNode): string {
-  if (node.nodeType === 3) return escapeTypstText(node.textContent ?? "");
-  const tag = node.nodeName.toLowerCase();
-  switch (tag) {
-    case "p":
-    case "div":
-      return `${typstInline(node).trim()}\n\n`;
-    case "br":
-      return "\\\\";
-    case "strong":
-    case "b":
-      return `*${typstInline(node)}*`;
-    case "em":
-    case "i":
-      return `_${typstInline(node)}_`;
-    case "code":
-      return `\`${node.textContent ?? ""}\``;
-    case "pre": {
-      const code = node.childNodes.find((c) => c.nodeName === "CODE");
-      const lang =
-        code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
-      const text = code?.textContent ?? node.textContent ?? "";
-      const fence = text.includes("```") ? "````" : "```";
-      return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
+  function escapeText(text: string): string {
+    return opts.escape ? escapeTypstText(text) : text;
+  }
+
+  /** Renders the children of `node` as inline Typst markup. */
+  function inline(node: domino.DomNode): string {
+    let out = "";
+    for (const child of node.childNodes) {
+      out += renderNode(child);
     }
-    case "h1":
-    case "h2":
-    case "h3":
-    case "h4":
-    case "h5":
-    case "h6": {
-      const level = Number(tag[1]);
-      return `${TYPST_HEADING_PREFIX[level] ?? ""}${typstInline(node).trim()}\n\n`;
-    }
-    case "ul":
-    case "ol": {
-      const marker = tag === "ol" ? "+ " : "- ";
-      let out = "";
-      for (const li of node.childNodes) {
-        if (li.nodeName !== "LI") continue;
-        out += `\n${marker}${typstInline(li).trim()}`;
+    return out;
+  }
+
+  function renderNode(node: domino.DomNode): string {
+    if (node.nodeType === 3) return escapeText(node.textContent ?? "");
+    const tag = node.nodeName.toLowerCase();
+    switch (tag) {
+      case "p":
+      case "div":
+        return `${inline(node).trim()}\n\n`;
+      case "br":
+        return "\\\\";
+      case "strong":
+      case "b":
+        return `*${inline(node)}*`;
+      case "em":
+      case "i":
+        return `_${inline(node)}_`;
+      case "code":
+        return `\`${node.textContent ?? ""}\``;
+      case "pre": {
+        const code = node.childNodes.find((c) => c.nodeName === "CODE");
+        const lang =
+          code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
+        const text = code?.textContent ?? node.textContent ?? "";
+        const fence = text.includes(opts.codeFence)
+          ? opts.codeFence + opts.codeFence[0]
+          : opts.codeFence;
+        return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
       }
-      return `${out}\n\n`;
+      case "h1":
+      case "h2":
+      case "h3":
+      case "h4":
+      case "h5":
+      case "h6": {
+        const level = Number(tag[1]);
+        return `${opts.headingPrefixes[level] ?? ""}${inline(node).trim()}\n\n`;
+      }
+      case "ul":
+      case "ol": {
+        const marker = tag === "ol" ? "+ " : "- ";
+        let out = "";
+        for (const li of node.childNodes) {
+          if (li.nodeName !== "LI") continue;
+          out += `\n${marker}${inline(li).trim()}`;
+        }
+        return `${out}\n\n`;
+      }
+      case "a": {
+        const href = node.getAttribute("href") ?? "";
+        const text = inline(node).trim();
+        return text ? `#link("${href}")[${text}]` : `#link("${href}")`;
+      }
+      case "img":
+        return `#image("${node.getAttribute("src") ?? ""}")`;
+      case "sup":
+        return `^${inline(node)}`;
+      case "sub":
+        return `_${inline(node)}`;
+      case "del":
+      case "s":
+      case "strike":
+        return `#strike[${inline(node)}]`;
+      case "u":
+        return `#underline[${inline(node)}]`;
+      case "mark":
+        return `#highlight[${inline(node)}]`;
+      case "small":
+        return `#small[${inline(node)}]`;
+      case "blockquote":
+        return `#quote[${inline(node)}]`;
+      case "hr":
+        return `${opts.hr}\n\n`;
+      case "script":
+      case "style":
+      case "head":
+      case "title":
+      case "meta":
+      case "noscript":
+      case "template":
+        return "";
+      case "table": {
+        const rows = node.childNodes.filter((n) => n.nodeName === "TR");
+        if (rows.length === 0) return "";
+        const cells = rows.map((r) =>
+          r.childNodes
+            .filter((n) => n.nodeName === "TD" || n.nodeName === "TH")
+            .map((c) => inline(c).trim())
+        );
+        const cols = Math.max(...cells.map((r) => r.length));
+        const flat = cells.flat();
+        return `#table(columns: ${cols}, ${flat.map((c) => `[${c}]`).join(", ")})\n\n`;
+      }
+      default:
+        return inline(node);
     }
-    case "a": {
-      const href = node.getAttribute("href") ?? "";
-      const text = typstInline(node).trim();
-      return text ? `#link("${href}")[${text}]` : `#link("${href}")`;
-    }
-    case "img":
-      return `#image("${node.getAttribute("src") ?? ""}")`;
-    case "sup":
-      return `^${typstInline(node)}`;
-    case "sub":
-      return `_${typstInline(node)}`;
-    case "del":
-    case "s":
-    case "strike":
-      return `#strike[${typstInline(node)}]`;
-    case "u":
-      return `#underline[${typstInline(node)}]`;
-    case "mark":
-      return `#highlight[${typstInline(node)}]`;
-    case "small":
-      return `#small[${typstInline(node)}]`;
-    case "blockquote":
-      return `#quote[${typstInline(node)}]`;
-    case "hr":
-      return `#line(length: 100%)\n\n`;
-    case "script":
-    case "style":
-    case "head":
-    case "title":
-    case "meta":
-    case "noscript":
-    case "template":
-      return "";
-    case "table": {
-      const rows = node.childNodes.filter((n) => n.nodeName === "TR");
-      if (rows.length === 0) return "";
-      const cells = rows.map((r) =>
-        r.childNodes
-          .filter((n) => n.nodeName === "TD" || n.nodeName === "TH")
-          .map((c) => typstInline(c).trim())
-      );
-      const cols = Math.max(...cells.map((r) => r.length));
-      const flat = cells.flat();
-      return `#table(columns: ${cols}, ${flat.map((c) => `[${c}]`).join(", ")})\n\n`;
-    }
-    default:
-      return typstInline(node);
   }
+
+  return (html: string): string => {
+    if (!html.trim()) return "";
+    const doc = domino.createDocument(html);
+    return inline(doc.body).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  };
 }
 
-/** Converts LeetCode problem-description HTML to Typst markup. */
-export function toTypst(html: string): string {
-  if (!html.trim()) return "";
-  const doc = domino.createDocument(html);
-  return typstInline(doc.body).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+/**
+ * Creates a Typst conversion filter. The returned filter also accepts
+ * per-call options that override the factory options.
+ */
+export function makeToTypst(options?: TypstOptions): TypstFilter {
+  return (html, callOptions) =>
+    makeTypstConverter({ ...options, ...callOptions })(html);
 }
+
+/** Default Typst filter. */
+export const toTypst = makeToTypst();
 
 /* ------------------------------------------------------------------ */
 /* Templates (Nunjucks)                                                */
@@ -285,6 +399,9 @@ function getEnv(): nunjucks.Environment {
     env.addFilter("slugify", slugify);
     env.addFilter("pad", pad);
     env.addFilter("ext", langExt);
+    env.addFilter("toMarkdown", toMarkdown);
+    env.addFilter("toGfm", toGfm);
+    env.addFilter("toTypst", toTypst);
   }
   return env;
 }
@@ -356,9 +473,7 @@ export interface TemplateContext {
     difficulty: string;
     tags: string[];
     url: string;
-    content_html: string;
-    content_md: string;
-    content_typst: string;
+    content: string;
     acceptance_rate: number | null;
     is_paid_only: boolean;
   };
@@ -389,9 +504,7 @@ export function buildContext(
       difficulty: question.difficulty,
       tags: question.tags,
       url: `https://leetcode.com/problems/${question.titleSlug}/`,
-      content_html: question.contentHtml,
-      content_md: toMarkdown(question.contentHtml),
-      content_typst: toTypst(question.contentHtml),
+      content: question.contentHtml,
       acceptance_rate: question.acceptanceRate,
       is_paid_only: question.isPaidOnly,
     },
