@@ -8,8 +8,9 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
   to one commit and may produce any number of files.
 - **Problem descriptions** — the raw problem HTML is available as
-  `question.content`; convert it with the `toMarkdown` / `toTypst` template
-  filters (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
+  `question.content`; convert it with the `toMarkdown` filter (`{ gfm: true }`
+  enables GitHub-flavored tables, strikethrough, and task lists) or the
+  `toTypst` filter (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
 - **Submission filtering** — status, language, problem, and time-window filters.
 - **Robust watermark** — no state files: the last synced submission is derived
   from commit history (see [Watermark](#watermark)).
@@ -90,7 +91,7 @@ jobs:
 
                   # {{ question.title }}
 
-                  {{ question.content | toMarkdown }}
+                  {{ question.content | toMarkdown({ gfm: true }) }}
               - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
@@ -124,7 +125,7 @@ filters:
   until: null               # optional upper bound
 files:                      # optional; defaults to the markdown layout below
   - filename: "{{ question.title_slug }}/README.md"
-    content: "{{ question.content | toMarkdown }}"
+    content: "{{ question.content | toMarkdown({ gfm: true }) }}"
   - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
@@ -177,12 +178,37 @@ Variables available in filename, content, and commit-message templates
 Custom filters: `datefmt('YYYY-MM-DD')` (tokens `YYYY MM DD HH mm ss`, UTC),
 `slugify`, `pad(4)` (zero-pad to a width, default 4, no truncation — e.g.
 `{{ question.frontend_id | pad(4) }}` → `0001`), `ext` (lang → file extension,
-e.g. `python3` → `py`), `toMarkdown` and `toTypst` (problem HTML → markdown /
-Typst markup, e.g. `{{ question.content | toMarkdown }}`). All standard
+e.g. `python3` → `py`), and the conversion filters `toMarkdown` (markdown;
+pass `{ gfm: true }` for GitHub-flavored tables/strikethrough/task lists) and
+`toTypst` ([Typst](https://typst.app) markup), e.g.
+`{{ question.content | toMarkdown({ gfm: true }) }}`.
+All standard
 [Nunjucks filters](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
 are available (`join`, `lower`, `replace`, …). Undefined variables render
 empty; set `render.throwOnUndefined: true` in the config to make them throw
 instead (useful for catching typos in templates).
+
+### Conversion options
+
+Each conversion filter accepts an options object as a template argument, e.g.
+`{{ question.content | toMarkdown({ codeBlockStyle: "indented", gfm: true, tables: false }) }}`.
+
+- **`toMarkdown(options?)`** — markdown. Options: `gfm` (default `false`;
+enable GitHub-flavored tables/strikethrough/task lists), `tables`, `strikethrough`,
+`taskListItems` (default `true` each; only apply when `gfm` is enabled),
+`headingStyle` (`atx` | `setext`), `hr`, `bulletListMarker` (`-` | `*` | `+`),
+`codeBlockStyle` (`fenced` | `indented`), `fence` (` ``` ` | `~~~`),
+`emDelimiter` (`*` | `_`), `strongDelimiter` (`**` | `__`), `linkStyle`
+(`inlined` | `referenced`), `linkReferenceStyle`
+(`full` | `collapsed` | `shortcut`).
+- **`toTypst(options?)`** — [Typst](https://typst.app) markup. Options:
+  `headingPrefixes` (prefix per heading level 1-6, default
+  `["", "= ", "== ", ...]`), `codeFence` (default ` ``` `), `escape`
+  (default `true`), and `hr` (default `#line(length: 100%)`).
+
+The same converters are available as factories for embedding code:
+`makeToMarkdown(options)` and `makeToTypst(options)`. `toGfm` is kept as an
+alias for `toMarkdown({ gfm: true })`.
 
 Rendered filenames are sanitized per path segment: reserved characters
 (`/\?%*:|"<>` and control chars) and whitespace become `-`, runs of dashes

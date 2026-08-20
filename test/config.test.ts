@@ -21,7 +21,7 @@ describe("parseConfig", () => {
       "{{ question.title_slug }}/README.md"
     );
     expect(cfg.files[0]!.content).toContain(
-      "{{ question.content | toMarkdown }}"
+      "{{ question.content | toMarkdown({ gfm: true }) }}"
     );
     expect(cfg.files[1]!.filename).toContain("{{ submission.lang_ext }}");
   });
