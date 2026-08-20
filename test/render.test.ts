@@ -99,6 +99,12 @@ describe("templates", () => {
     expect(renderTemplate("{{ question.tags | join(', ') }}", ctx)).toBe(
       "Array, Hash Table"
     );
+    expect(renderTemplate("{{ question.content | toMarkdown }}", ctx)).toContain(
+      "Given `nums`, return *indices*"
+    );
+    expect(renderTemplate("{{ question.content | toTypst }}", ctx)).toContain(
+      "Given `nums`, return _indices_."
+    );
   });
 
   it("renders undefined variables as empty", () => {

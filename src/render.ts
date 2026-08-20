@@ -285,6 +285,8 @@ function getEnv(): nunjucks.Environment {
     env.addFilter("slugify", slugify);
     env.addFilter("pad", pad);
     env.addFilter("ext", langExt);
+    env.addFilter("toMarkdown", toMarkdown);
+    env.addFilter("toTypst", toTypst);
   }
   return env;
 }
@@ -356,9 +358,7 @@ export interface TemplateContext {
     difficulty: string;
     tags: string[];
     url: string;
-    content_html: string;
-    content_md: string;
-    content_typst: string;
+    content: string;
     acceptance_rate: number | null;
     is_paid_only: boolean;
   };
@@ -389,9 +389,7 @@ export function buildContext(
       difficulty: question.difficulty,
       tags: question.tags,
       url: `https://leetcode.com/problems/${question.titleSlug}/`,
-      content_html: question.contentHtml,
-      content_md: toMarkdown(question.contentHtml),
-      content_typst: toTypst(question.contentHtml),
+      content: question.contentHtml,
       acceptance_rate: question.acceptanceRate,
       is_paid_only: question.isPaidOnly,
     },

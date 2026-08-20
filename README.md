@@ -7,10 +7,9 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
 - **Templated everything** — filename, content, and commit message are
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
   to one commit and may produce any number of files.
-- **Problem descriptions** — the LeetCode problem HTML is converted to
-  plain common markdown (`question.content_md`) and [Typst](https://typst.app)
-  markup (`question.content_typst`) with custom rules for `<sup>`/`<sub>`,
-  code blocks, and tables.
+- **Problem descriptions** — the raw problem HTML is available as
+  `question.content`; convert it with the `toMarkdown` / `toTypst` template
+  filters (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
 - **Submission filtering** — status, language, problem, and time-window filters.
 - **Robust watermark** — no state files: the last synced submission is derived
   from commit history (see [Watermark](#watermark)).
@@ -91,7 +90,7 @@ jobs:
 
                   # {{ question.title }}
 
-                  {{ question.content_md }}
+                  {{ question.content | toMarkdown }}
               - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
@@ -125,7 +124,7 @@ filters:
   until: null               # optional upper bound
 files:                      # optional; defaults to the markdown layout below
   - filename: "{{ question.title_slug }}/README.md"
-    content: "{{ question.content_md }}"
+    content: "{{ question.content | toMarkdown }}"
   - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
@@ -170,16 +169,16 @@ Variables available in filename, content, and commit-message templates
 - `question.difficulty` — `Easy` | `Medium` | `Hard`
 - `question.tags` — array of topic tag names
 - `question.url` — `https://leetcode.com/problems/<slug>/`
-- `question.content_html` — raw problem HTML
-- `question.content_md` — converted plain common markdown
-- `question.content_typst` — converted [Typst](https://typst.app) markup
+- `question.content` — raw problem HTML (convert with the `toMarkdown` /
+  `toTypst` filters)
 - `question.acceptance_rate` — number (`null` when unavailable)
 - `question.is_paid_only` — boolean
 
 Custom filters: `datefmt('YYYY-MM-DD')` (tokens `YYYY MM DD HH mm ss`, UTC),
 `slugify`, `pad(4)` (zero-pad to a width, default 4, no truncation — e.g.
 `{{ question.frontend_id | pad(4) }}` → `0001`), `ext` (lang → file extension,
-e.g. `python3` → `py`). All standard
+e.g. `python3` → `py`), `toMarkdown` and `toTypst` (problem HTML → markdown /
+Typst markup, e.g. `{{ question.content | toMarkdown }}`). All standard
 [Nunjucks filters](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
 are available (`join`, `lower`, `replace`, …). Undefined variables render
 empty; set `render.throwOnUndefined: true` in the config to make them throw

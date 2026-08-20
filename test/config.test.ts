@@ -20,7 +20,9 @@ describe("parseConfig", () => {
     expect(cfg.files[0]!.filename).toBe(
       "{{ question.title_slug }}/README.md"
     );
-    expect(cfg.files[0]!.content).toContain("{{ question.content_md }}");
+    expect(cfg.files[0]!.content).toContain(
+      "{{ question.content | toMarkdown }}"
+    );
     expect(cfg.files[1]!.filename).toContain("{{ submission.lang_ext }}");
   });
 
