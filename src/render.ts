@@ -51,10 +51,63 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Pads a value with leading zeros to at least `width` digits (no truncation). */
-export function pad(value: string | number, width = 4): string {
+/**
+ * Pads a value with `char` to at least `width` characters (no truncation).
+ * Multi-character padding strings repeat and are cut to fit.
+ */
+export function pad(value: string | number, width = 4, char = "0"): string {
   const s = String(value);
-  return s.length >= width ? s : "0".repeat(width - s.length) + s;
+  if (s.length >= width) return s;
+  const padChar = char || "0";
+  const needed = width - s.length;
+  return padChar.repeat(Math.ceil(needed / padChar.length)).slice(0, needed) + s;
+}
+
+/**
+ * Picks a fenced-code-block delimiter: the shortest run of `char` (at least
+ * `minLength`) that does not appear anywhere in `content`.
+ */
+function pickFence(content: string, char: string, minLength = 3): string {
+  let max = 0;
+  let run = 0;
+  for (const c of content) {
+    run = c === char ? run + 1 : 0;
+    if (run > max) max = run;
+  }
+  return char.repeat(Math.max(minLength, max + 1));
+}
+
+export interface CodeBlockOptions {
+  /** Fence character (default "`"). */
+  fence?: "`" | "~";
+}
+
+/**
+ * Wraps content in a fenced code block with an optional language id. The
+ * fence is chosen so it cannot collide with the content (longest run of the
+ * fence character in the content plus one).
+ */
+export function codeBlock(
+  content: string,
+  lang?: string,
+  options?: CodeBlockOptions
+): string {
+  const char = options?.fence ?? "`";
+  const fence = pickFence(content, char);
+  return `${fence}${lang ?? ""}\n${content.replace(/\n$/, "")}\n${fence}\n`;
+}
+
+/**
+ * Replaces matches of a regular expression (Nunjucks `replace` only handles
+ * literal strings). Pass flags such as `"g"` for all matches.
+ */
+export function regexReplace(
+  value: string,
+  pattern: string,
+  replacement: string,
+  flags?: string
+): string {
+  return value.replace(new RegExp(pattern, flags), replacement);
 }
 
 /**
@@ -275,9 +328,7 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
         const lang =
           code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
         const text = code?.textContent ?? node.textContent ?? "";
-        const fence = text.includes(opts.codeFence)
-          ? opts.codeFence + opts.codeFence[0]
-          : opts.codeFence;
+        const fence = pickFence(text, opts.codeFence[0] ?? "`", opts.codeFence.length || 3);
         return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
       }
       case "h1":
@@ -399,6 +450,8 @@ function getEnv(): nunjucks.Environment {
     env.addFilter("slugify", slugify);
     env.addFilter("pad", pad);
     env.addFilter("ext", langExt);
+    env.addFilter("codeBlock", codeBlock);
+    env.addFilter("regexReplace", regexReplace);
     env.addFilter("toMarkdown", toMarkdown);
     env.addFilter("toGfm", toGfm);
     env.addFilter("toTypst", toTypst);
