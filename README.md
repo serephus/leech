@@ -175,18 +175,39 @@ Variables available in filename, content, and commit-message templates
 - `question.acceptance_rate` — number (`null` when unavailable)
 - `question.is_paid_only` — boolean
 
-Custom filters: `datefmt('YYYY-MM-DD')` (tokens `YYYY MM DD HH mm ss`, UTC),
-`slugify`, `pad(4)` (zero-pad to a width, default 4, no truncation — e.g.
-`{{ question.frontend_id | pad(4) }}` → `0001`), `ext` (lang → file extension,
-e.g. `python3` → `py`), and the conversion filters `toMarkdown` (markdown;
-pass `{ gfm: true }` for GitHub-flavored tables/strikethrough/task lists) and
-`toTypst` ([Typst](https://typst.app) markup), e.g.
-`{{ question.content | toMarkdown({ gfm: true }) }}`.
-All standard
-[Nunjucks filters](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
-are available (`join`, `lower`, `replace`, …). Undefined variables render
-empty; set `render.throwOnUndefined: true` in the config to make them throw
-instead (useful for catching typos in templates).
+### Template filters
+
+Every standard
+[Nunjucks filter](https://mozilla.github.io/nunjucks/templating.html#builtin-filters)
+works (`join`, `lower`, `replace`, `trim`, `truncate`, `capitalize`, `striptags`,
+`sort`, `groupby`, `dump`, `urlencode`, …), plus the custom filters below.
+Undefined variables render empty; set `render.throwOnUndefined: true` in the
+config to make them throw instead (useful for catching typos in templates).
+
+- **`datefmt(value, format = "YYYY-MM-DD")`** — format a unix-seconds timestamp
+  (UTC). Tokens: `YYYY MM DD HH mm ss`. E.g.
+  `{{ submission.timestamp | datefmt('YYYY/MM/DD') }}` → `2024/01/01`.
+- **`slugify(value)`** — lowercase, trim, collapse non-alphanumerics to `-`,
+  strip leading/trailing dashes. E.g. `{{ question.title | slugify }}` → `two-sum`.
+- **`pad(value, width = 4, char = "0")`** — pad with `char` to at least `width`
+  (no truncation; multi-char `char` repeats and is cut to fit). E.g.
+  `{{ question.frontend_id | pad(4) }}` → `0001`, `{{ question.frontend_id | pad(4, '*') }}` → `***1`.
+- **`ext(lang)`** — map a LeetCode language id to a file extension (fallback:
+  the id itself). E.g. `{{ submission.lang | ext }}` → `py`.
+- **`regexReplace(value, pattern, replacement, flags?)`** — replace matches of
+  a regular expression (Nunjucks `replace` only handles literal strings). Pass
+  `'g'` in `flags` for all matches. E.g.
+  `{{ submission.code | regexReplace('\s+$', '', 'm') }}` strips trailing whitespace.
+- **`codeBlock(content, lang?, options?)`** — wrap content in a fenced code
+  block with an optional language id. The fence is chosen so it cannot collide
+  with the content (longest fence-char run plus one). Options: `fence`
+  (`` ` `` | `~`, default `` ` ``). E.g.
+  `{{ submission.code | codeBlock(submission.lang_ext) }}`.
+- **`toMarkdown(html, options?)`** — convert HTML to markdown; pass
+  `{ gfm: true }` for GitHub-flavored tables/strikethrough/task lists. See
+  [Conversion options](#conversion-options).
+- **`toTypst(html, options?)`** — convert HTML to [Typst](https://typst.app)
+  markup. See [Conversion options](#conversion-options).
 
 ### Conversion options
 

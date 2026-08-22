@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildContext,
+  codeBlock,
   configureRender,
   datefmt,
   langExt,
   makeToMarkdown,
   makeToTypst,
   pad,
+  regexReplace,
   renderFilename,
   renderTemplate,
   toMarkdown,
@@ -199,6 +201,15 @@ describe("templates", () => {
     expect(renderTemplate("{{ question.content | toTypst }}", ctx)).toContain(
       "Given `nums`, return _indices_."
     );
+    expect(
+      renderTemplate("{{ submission.code | codeBlock(submission.lang_ext) }}", ctx)
+    ).toBe("```py\nprint('hi')\n```\n");
+    expect(renderTemplate("{{ 'a1b2' | regexReplace('[0-9]', 'X', 'g') }}", ctx)).toBe(
+      "aXbX"
+    );
+    expect(renderTemplate("{{ question.frontend_id | pad(3, '-') }}", ctx)).toBe(
+      "--1"
+    );
   });
 
   it("passes filter options from templates", () => {
@@ -264,6 +275,44 @@ describe("pad", () => {
   });
   it("supports a custom width", () => {
     expect(pad("7", 3)).toBe("007");
+  });
+  it("supports a custom padding char", () => {
+    expect(pad("7", 3, "-")).toBe("--7");
+    expect(pad("ab", 5, "-=")).toBe("-=-ab");
+    expect(pad("1234", 4, "*")).toBe("1234");
+  });
+});
+
+describe("codeBlock", () => {
+  it("wraps content in a fenced block with a language", () => {
+    expect(codeBlock("print('hi')\n", "python")).toBe(
+      "```python\nprint('hi')\n```\n"
+    );
+  });
+
+  it("lengthens the fence to avoid collisions", () => {
+    const out = codeBlock("a\n```\nb", "md");
+    expect(out).toBe("````md\na\n```\nb\n````\n");
+  });
+
+  it("supports a tilde fence", () => {
+    expect(codeBlock("x", "python", { fence: "~" })).toBe(
+      "~~~python\nx\n~~~\n"
+    );
+  });
+
+  it("handles empty content", () => {
+    expect(codeBlock("")).toBe("```\n\n```\n");
+  });
+});
+
+describe("regexReplace", () => {
+  it("replaces with a regex and flags", () => {
+    expect(regexReplace("a1b2", "[0-9]", "X", "g")).toBe("aXbX");
+  });
+
+  it("replaces only the first match without the g flag", () => {
+    expect(regexReplace("a1b2", "[0-9]", "X")).toBe("aXb2");
   });
 });
 
