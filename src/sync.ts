@@ -3,7 +3,6 @@ import { applyFilters } from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
 import type { CommitFile } from "./git";
 import { LeetCodeClient } from "./leetcode";
-import { normalizeDestination } from "./config";
 import {
   assetFilename,
   assetReference,
@@ -124,14 +123,11 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     const context = buildContext(details, question);
 
     // Plan asset downloads: every absolute http(s) img src in the problem HTML
-    // maps to `<assets>/<filename>` at the repo root. `assets` is a template
-    // rendered per submission — e.g. `assets/{{ question.title_slug }}` groups
-    // images per question; empty renders mean assets are disabled.
-    const assetsDir = normalizeDestination(
-      renderTemplate(config.assets, context)
-    );
+    // maps to `<prefix>/images/<slug>/<filename>`, where prefix is the
+    // destination (assets: "") or the configured assets folder. `assets: null`
+    // disables downloading entirely.
     const assetPlan: { url: string; filename: string }[] = [];
-    if (assetsDir) {
+    if (config.assets !== null) {
       const used = new Set<string>();
       for (const url of extractAssetUrls(question.contentHtml)) {
         let filename = assetFilename(url);
@@ -165,40 +161,40 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
       (a) => (assetBytes.get(a.url)?.length ?? 0) > 0
     );
 
+    const assetsPrefix = config.assets === "" ? config.destination : (config.assets ?? "");
     const assetFiles: CommitFile[] = okAssets.map((a) => ({
-      path: `${assetsDir}/${a.filename}`,
+      path: `${assetsPrefix}/images/${question.titleSlug}/${a.filename}`,
       content: assetBytes.get(a.url)!,
       encoding: "base64",
     }));
 
-    const files = config.files.map((tpl) => {
-      const path = renderFilename(tpl.filename, context, config.destination);
-      const idx = path.lastIndexOf("/");
-      const dir = idx >= 0 ? path.slice(0, idx) : "";
-      const relMap = new Map<string, string>();
-      for (const a of okAssets) {
-        relMap.set(
-          a.url,
-          assetReference(
-            config.assetRef,
-            dir,
-            `${assetsDir}/${a.filename}`,
-            a.filename
-          )
-        );
-      }
-      const fileContext =
-        relMap.size > 0
-          ? {
-              ...context,
-              question: {
-                ...context.question,
-                content: rewriteAssetUrls(context.question.content, relMap),
-              },
-            }
-          : context;
-      return { path, content: renderTemplate(tpl.content, fileContext) };
-    });
+    // References are the same for every output file (repo-root-absolute), so
+    // the rewritten content is built once per submission.
+    const relMap = new Map<string, string>();
+    for (const a of okAssets) {
+      relMap.set(
+        a.url,
+        assetReference(
+          config.assets ?? "",
+          `${assetsPrefix}/images/${question.titleSlug}/${a.filename}`
+        )
+      );
+    }
+    const fileContext =
+      relMap.size > 0
+        ? {
+            ...context,
+            question: {
+              ...context.question,
+              content: rewriteAssetUrls(context.question.content, relMap),
+            },
+          }
+        : context;
+
+    const files = config.files.map((tpl) => ({
+      path: renderFilename(tpl.filename, context, config.destination),
+      content: renderTemplate(tpl.content, fileContext),
+    }));
 
     const message = `${config.commit.prefix} ${renderTemplate(
       config.commit.message,
