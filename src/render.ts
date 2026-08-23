@@ -228,25 +228,6 @@ function createTurndown(options: MarkdownOptions): TurndownService {
         `${subscript[0]}${content}${subscript[1]}`,
     });
   }
-  // <pre> without a <code> child (e.g. LeetCode example blocks with bold
-  // labels): keep each line on its own line via markdown hard breaks.
-  service.addRule("preText", {
-    filter: (node) => {
-      const first = [...node.childNodes].find(
-        (c) => c.nodeType !== 3 || (c.textContent ?? "").trim() !== ""
-      );
-      return node.nodeName === "PRE" && first?.nodeName !== "CODE";
-    },
-    replacement: (content: string) => {
-      const lines = content.trim().split("\n").map((l) => l.trimEnd());
-      const rendered = lines
-        .map((l, i) =>
-          l === "" ? "" : i < lines.length - 1 ? `${l}  ` : l
-        )
-        .join("\n");
-      return `\n\n${rendered}\n\n`;
-    },
-  });
   return service;
 }
 
@@ -365,32 +346,12 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "code":
         return `\`${node.textContent ?? ""}\``;
       case "pre": {
-        // Standard block-code pattern: <pre><code class="language-x">…</code></pre>.
-        const first = [...node.childNodes].find(
-          (c) => c.nodeType !== 3 || (c.textContent ?? "").trim() !== ""
-        );
-        if (first?.nodeName === "CODE") {
-          const lang =
-            first.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
-          const text = first.textContent ?? "";
-          const fence = pickFence(
-            text,
-            opts.codeFence[0] ?? "`",
-            opts.codeFence.length || 3
-          );
-          return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
-        }
-        // Non-code <pre> (e.g. LeetCode example blocks with bold labels):
-        // render inline, converting newline runs to explicit line breaks.
-        let out = "";
-        for (const child of node.childNodes) {
-          if (child.nodeType === 3) {
-            out += escapeText(child.textContent ?? "").replace(/\n+/g, " \\\n");
-          } else {
-            out += renderNode(child);
-          }
-        }
-        return `${out.trim().replace(/^\\\n/, "").replace(/\\$/, "")}\n\n`;
+        const code = node.childNodes.find((c) => c.nodeName === "CODE");
+        const lang =
+          code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
+        const text = code?.textContent ?? node.textContent ?? "";
+        const fence = pickFence(text, opts.codeFence[0] ?? "`", opts.codeFence.length || 3);
+        return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
       }
       case "h1":
       case "h2":
