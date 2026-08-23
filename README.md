@@ -12,7 +12,7 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   enables GitHub-flavored tables, strikethrough, and task lists) or the
   `toTypst` filter (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
 - **Local assets** — images linked from problem descriptions are downloaded
-  into `<destination>/<assets>/<slug>/` and references are rewritten to local
+  into `<assets>/<slug>/` at the repo root and references are rewritten to local
   relative paths in the markdown/typst output, so the repo stays
   self-contained (see [Assets](#assets)).
 - **Submission filtering** — status, language, problem, and time-window filters.
@@ -144,7 +144,7 @@ repo:                       # optional; default: the repo the action runs in
   name: my-solutions
 branch: main                # optional; default: the repo's default branch
 destination: solutions      # default: "solutions"; files are written under this folder
-assets: assets              # default: "assets"; folder under destination for downloaded
+assets: assets              # default: "assets"; folder at repo root for downloaded
                             #   problem images ("" disables downloading)
 filters:
   status: accepted          # default: "accepted"; accepted | all
@@ -190,7 +190,7 @@ render:
 Images linked from problem descriptions (e.g. `https://assets.leetcode.com/...`)
 are downloaded automatically and their references are rewritten to local paths in
 both `toMarkdown` and `toTypst` output. Assets are stored under
-`<destination>/<assets>/<slug>/` (e.g. `solutions/assets/two-sum/img_1.png`) and
+`<assets>/<slug>/` at the repo root (e.g. `assets/two-sum/img_1.png`) and
 each rendered file references them with a path relative to its own directory
 (e.g. `../assets/two-sum/img_1.png`), so the repository is self-contained.
 

@@ -65,6 +65,18 @@ describe("relativeAssetPath", () => {
       relativeAssetPath("", "solutions/assets/two-sum/img_1.png")
     ).toBe("solutions/assets/two-sum/img_1.png");
   });
+
+  it("reaches root-level assets from nested files", () => {
+    expect(
+      relativeAssetPath("solutions/two-sum", "assets/two-sum/img_1.png")
+    ).toBe("../../assets/two-sum/img_1.png");
+    expect(relativeAssetPath("solutions", "assets/two-sum/img_1.png")).toBe(
+      "../assets/two-sum/img_1.png"
+    );
+    expect(relativeAssetPath("", "assets/two-sum/img_1.png")).toBe(
+      "assets/two-sum/img_1.png"
+    );
+  });
 });
 
 describe("rewriteAssetUrls", () => {

@@ -123,7 +123,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     const context = buildContext(details, question);
 
     // Plan asset downloads: every absolute http(s) img src in the problem HTML
-    // maps to `<destination>/<assets>/<slug>/<filename>`.
+    // maps to `<assets>/<slug>/<filename>` at the repo root.
     const assetsDir = config.assets;
     const assetPlan: { url: string; filename: string }[] = [];
     if (assetsDir) {
@@ -161,7 +161,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     );
 
     const assetFiles: CommitFile[] = okAssets.map((a) => ({
-      path: `${config.destination}/${assetsDir}/${question.titleSlug}/${a.filename}`,
+      path: `${assetsDir}/${question.titleSlug}/${a.filename}`,
       content: assetBytes.get(a.url)!,
       encoding: "base64",
     }));
@@ -176,7 +176,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
           a.url,
           relativeAssetPath(
             dir,
-            `${config.destination}/${assetsDir}/${question.titleSlug}/${a.filename}`
+            `${assetsDir}/${question.titleSlug}/${a.filename}`
           )
         );
       }
