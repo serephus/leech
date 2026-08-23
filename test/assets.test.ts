@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assetFilename,
+  assetReference,
   extractAssetUrls,
   relativeAssetPath,
   rewriteAssetUrls,
@@ -76,6 +77,41 @@ describe("relativeAssetPath", () => {
     expect(relativeAssetPath("", "assets/two-sum/img_1.png")).toBe(
       "assets/two-sum/img_1.png"
     );
+  });
+});
+
+describe("assetReference", () => {
+  it("uses relative paths when assetRef is empty", () => {
+    expect(
+      assetReference(
+        "",
+        "solutions/two-sum",
+        "assets/two-sum/img_1.png",
+        "two-sum",
+        "img_1.png"
+      )
+    ).toBe("../../assets/two-sum/img_1.png");
+  });
+
+  it("uses root-absolute paths when assetRef is set", () => {
+    expect(
+      assetReference(
+        "/images",
+        "solutions/two-sum",
+        "static/images/two-sum/img_1.png",
+        "two-sum",
+        "img_1.png"
+      )
+    ).toBe("/images/two-sum/img_1.png");
+    expect(
+      assetReference(
+        "/assets",
+        "",
+        "assets/two-sum/img_1.png",
+        "two-sum",
+        "img_1.png"
+      )
+    ).toBe("/assets/two-sum/img_1.png");
   });
 });
 

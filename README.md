@@ -80,6 +80,7 @@ jobs:
           config: |
             destination: "solutions"
             assets: "assets"
+            assetRef: ""
             filters:
               status: accepted
               languages: [python3, typescript]
@@ -146,6 +147,8 @@ branch: main                # optional; default: the repo's default branch
 destination: solutions      # default: "solutions"; files are written under this folder
 assets: assets              # default: "assets"; folder at repo root for downloaded
                             #   problem images ("" disables downloading)
+assetRef: ""               # default: ""; root-absolute reference prefix for SSG
+                            #   (e.g. "/images"); empty = relative references
 filters:
   status: accepted          # default: "accepted"; accepted | all
   languages: [python3]      # default: []; only these languages
@@ -193,6 +196,21 @@ both `toMarkdown` and `toTypst` output. Assets are stored under
 `<assets>/<slug>/` at the repo root (e.g. `assets/two-sum/img_1.png`) and
 each rendered file references them with a path relative to its own directory
 (e.g. `../assets/two-sum/img_1.png`), so the repository is self-contained.
+
+For SSG frameworks that serve a static directory (Zola/Hugo: files under
+`static/`, referenced as `/images/...`), set `assets` to the storage folder and
+`assetRef` to the root-absolute reference prefix:
+
+```yaml
+assets: "static/images"
+assetRef: "/images"
+```
+
+Files are still stored under `static/images/<slug>/`, but references become
+`/images/<slug>/...` — which Zola/Hugo resolve to the static directory. Note
+that root-absolute references are a markdown/SSG concept; in Typst
+`#image("/images/...")` is a filesystem-absolute path, so keep relative
+references for Typst output.
 
 Set `assets: ""` to disable downloading and keep the original URLs. A failed
 download logs a warning and leaves the original URL; it does not fail the sync.

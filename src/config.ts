@@ -118,6 +118,10 @@ export const configSchema = z.object({
     .string()
     .default("assets")
     .transform(normalizeDestination),
+  assetRef: z
+    .string()
+    .default("")
+    .transform(normalizeAssetRef),
   filters: filterConfigSchema,
   files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
   commit: commitConfigSchema,
@@ -158,6 +162,15 @@ export function parseConfig(raw: string): LeechConfig {
 
 function normalizeDestination(dest: string): string {
   return dest.replace(/^\/+|\/+$/g, "");
+}
+
+/**
+ * Normalizes an asset reference prefix: leading "/", no trailing "/",
+ * empty string when empty (relative references).
+ */
+function normalizeAssetRef(ref: string): string {
+  const trimmed = ref.trim().replace(/^\/+|\/+$/g, "");
+  return trimmed ? `/${trimmed}` : "";
 }
 
 /** Parses a filter bound: unix seconds, a numeric string, or an ISO/date string. */

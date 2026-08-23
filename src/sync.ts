@@ -5,9 +5,9 @@ import type { CommitFile } from "./git";
 import { LeetCodeClient } from "./leetcode";
 import {
   assetFilename,
+  assetReference,
   downloadAsset,
   extractAssetUrls,
-  relativeAssetPath,
   rewriteAssetUrls,
 } from "./assets";
 import {
@@ -174,9 +174,12 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
       for (const a of okAssets) {
         relMap.set(
           a.url,
-          relativeAssetPath(
+          assetReference(
+            config.assetRef,
             dir,
-            `${assetsDir}/${question.titleSlug}/${a.filename}`
+            `${assetsDir}/${question.titleSlug}/${a.filename}`,
+            question.titleSlug,
+            a.filename
           )
         );
       }

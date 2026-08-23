@@ -60,6 +60,24 @@ export function relativeAssetPath(fromDir: string, toFile: string): string {
   return [...new Array(ups).fill(".."), ...to.slice(i)].join("/") || ".";
 }
 
+/**
+ * Resolves how an asset is referenced from a rendered file.
+ * - `assetRef` empty: relative path from `fromDir` to the stored file `toFile`.
+ * - `assetRef` set (e.g. "/images"): root-absolute `${assetRef}/${slug}/${filename}`,
+ *   the SSG convention (storage location is configured separately via `assets`).
+ */
+export function assetReference(
+  assetRef: string,
+  fromDir: string,
+  toFile: string,
+  slug: string,
+  filename: string
+): string {
+  return assetRef
+    ? `${assetRef}/${slug}/${filename}`
+    : relativeAssetPath(fromDir, toFile);
+}
+
 /** Downloads an asset into a Buffer; throws on a non-OK response. */
 export async function downloadAsset(url: string): Promise<Buffer> {
   const res = await fetch(url);
