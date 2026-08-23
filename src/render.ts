@@ -6,6 +6,7 @@ import {
   taskListItems as gfmTaskListItems,
 } from "turndown-plugin-gfm";
 import * as domino from "@mixmark-io/domino";
+import type { LeetCodeSite } from "./leetcode";
 import type { Question, SubmissionDetails } from "./types";
 
 const LANG_TO_EXTENSION: Record<string, string> = {
@@ -603,7 +604,8 @@ export interface TemplateContext {
 
 export function buildContext(
   submission: SubmissionDetails,
-  question: Question
+  question: Question,
+  site: LeetCodeSite = "leetcode.com"
 ): TemplateContext {
   return {
     submission: {
@@ -625,7 +627,7 @@ export function buildContext(
       title_slug: question.titleSlug,
       difficulty: question.difficulty,
       tags: question.tags,
-      url: `https://leetcode.com/problems/${question.titleSlug}/`,
+      url: `https://${site}/problems/${question.titleSlug}/`,
       content: question.contentHtml,
       acceptance_rate: question.acceptanceRate,
       is_paid_only: question.isPaidOnly,

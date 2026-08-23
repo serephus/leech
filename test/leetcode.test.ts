@@ -60,4 +60,25 @@ describe("LeetCodeClient.listSubmissions", () => {
       submissions: [entry],
     });
   });
+
+  it("targets leetcode.cn when site is configured", async () => {
+    let calledUrl = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calledUrl = url;
+        return {
+          status: 200,
+          ok: true,
+          statusText: "OK",
+          json: async () => ({
+            data: { submissionList: { hasNext: false, submissions: [] } },
+          }),
+        };
+      })
+    );
+    const client = new LeetCodeClient("session", "csrf", 0, "leetcode.cn");
+    await client.listSubmissions(0);
+    expect(calledUrl).toBe("https://leetcode.cn/graphql");
+  });
 });

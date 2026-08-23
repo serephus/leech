@@ -11,7 +11,8 @@ async function main(): Promise<void> {
   const client = new LeetCodeClient(
     core.getInput("leetcode-session", { required: true }),
     core.getInput("leetcode-csrf-token", { required: true }),
-    config.client.delayMs
+    config.client.delayMs,
+    config.site
   );
 
   const summary = await runSync({

@@ -8,6 +8,7 @@ describe("parseConfig", () => {
     expect(cfg.commit.prefix).toBe("leech:");
     expect(cfg.commit.message).toContain("{{ question.title }}");
     expect(cfg.destination).toBe("solutions");
+    expect(cfg.site).toBe("leetcode.com");
     expect(cfg.assets).toBeNull();
     expect(cfg.client.delayMs).toBe(250);
     expect(cfg.render.throwOnUndefined).toBe(false);
@@ -31,6 +32,12 @@ describe("parseConfig", () => {
     expect(parseConfig('assets: null').assets).toBeNull();
     expect(parseConfig('assets: ""').assets).toBe("");
     expect(parseConfig("assets: /static/images/").assets).toBe("static/images");
+  });
+
+  it("parses the site", () => {
+    expect(parseConfig("site: leetcode.cn").site).toBe("leetcode.cn");
+    expect(parseConfig("site: leetcode.com").site).toBe("leetcode.com");
+    expect(() => parseConfig("site: foo")).toThrow(/invalid config/);
   });
 
   it("parses filters and bounds", () => {

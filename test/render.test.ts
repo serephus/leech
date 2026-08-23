@@ -274,6 +274,13 @@ describe("templates", () => {
     );
   });
 
+  it("builds site-aware question urls", () => {
+    const us = buildContext(submission, question);
+    expect(us.question.url).toBe("https://leetcode.com/problems/two-sum/");
+    const cn = buildContext(submission, question, "leetcode.cn");
+    expect(cn.question.url).toBe("https://leetcode.cn/problems/two-sum/");
+  });
+
   it("passes filter options from templates", () => {
     expect(
       renderTemplate("{{ html | toMarkdown({ headingStyle: 'setext' }) }}", {
