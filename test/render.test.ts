@@ -76,6 +76,23 @@ describe("toMarkdown", () => {
     expect(md).toContain("109");
     expect(md).not.toContain("^");
   });
+
+  it("renders non-code pre blocks (examples) with hard line breaks", () => {
+    const md = toMarkdown(
+      "<pre>\n<strong>Input:</strong> num = 4325\n" +
+        "<strong>Output:</strong> 59\n" +
+        "<strong>Explanation:</strong> split <code>num1</code>.</pre>"
+    );
+    expect(md).toContain("**Input:** num = 4325  \n");
+    expect(md).toContain("**Output:** 59  \n");
+    expect(md).toContain("split `num1`.");
+  });
+
+  it("keeps standard pre>code blocks fenced in markdown", () => {
+    expect(
+      toMarkdown('<pre><code class="language-py">x</code></pre>')
+    ).toContain("```py");
+  });
 });
 
 describe("toMarkdown gfm mode", () => {
@@ -186,6 +203,24 @@ describe("toTypst", () => {
   it("converts sup/sub to native typst syntax", () => {
     const ts = toTypst("<p>H<sub>2</sub>O and 10<sup>9</sup></p>");
     expect(ts).toContain("H_2O and 10^9");
+  });
+
+  it("renders non-code pre blocks (examples) with labels and line breaks", () => {
+    const ts = toTypst(
+      "<pre>\n<strong>Input:</strong> num = 4325\n" +
+        "<strong>Output:</strong> 59\n" +
+        "<strong>Explanation:</strong> split <code>num1</code>.</pre>"
+    );
+    expect(ts).toContain("*Input:* num = 4325 \\\n");
+    expect(ts).toContain("*Output:* 59 \\\n");
+    expect(ts).toContain("split `num1`.");
+    expect(ts).not.toMatch(/```\nnum1/); // the inline code child must not swallow the block
+  });
+
+  it("keeps standard pre>code blocks fenced", () => {
+    expect(toTypst('<pre><code class="language-py">x</code></pre>')).toContain(
+      "```py"
+    );
   });
 
   it("escapes typst special characters in text", () => {
