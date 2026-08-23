@@ -184,6 +184,15 @@ works (`join`, `lower`, `replace`, `trim`, `truncate`, `capitalize`, `striptags`
 Undefined variables render empty; set `render.throwOnUndefined: true` in the
 config to make them throw instead (useful for catching typos in templates).
 
+> **Tip — no nested `{{ }}` inside filter arguments.** A filter argument is a
+> plain expression, so reference variables directly:
+> `{{ submission.code | codeBlock(submission.lang) }}`. Writing
+> `{{ submission.code | codeBlock({{ submission.lang }}) }}` is a Nunjucks
+> syntax error — it looks for a dict literal and fails with
+> `parseAggregate: expected colon after dict key` (reported against the
+> template's line/column, which can be mistaken for a YAML error in the
+> workflow file).
+
 - **`datefmt(value, format = "YYYY-MM-DD")`** — format a unix-seconds timestamp
   (UTC). Tokens: `YYYY MM DD HH mm ss`. E.g.
   `{{ submission.timestamp | datefmt('YYYY/MM/DD') }}` → `2024/01/01`.
