@@ -6,7 +6,7 @@ import {
   relativeAssetPath,
   rewriteAssetUrls,
 } from "../src/assets";
-import { toMarkdown, toTypst } from "../src/render";
+import { renderTemplate, toMarkdown, toTypst } from "../src/render";
 
 describe("extractAssetUrls", () => {
   it("finds absolute http(s) img srcs only", () => {
@@ -86,11 +86,10 @@ describe("assetReference", () => {
       assetReference(
         "",
         "solutions/two-sum",
-        "assets/two-sum/img_1.png",
-        "two-sum",
+        "assets/img_1.png",
         "img_1.png"
       )
-    ).toBe("../../assets/two-sum/img_1.png");
+    ).toBe("../../assets/img_1.png");
   });
 
   it("uses root-absolute paths when assetRef is set", () => {
@@ -98,20 +97,20 @@ describe("assetReference", () => {
       assetReference(
         "/images",
         "solutions/two-sum",
-        "static/images/two-sum/img_1.png",
-        "two-sum",
+        "static/images/img_1.png",
         "img_1.png"
       )
-    ).toBe("/images/two-sum/img_1.png");
+    ).toBe("/images/img_1.png");
+  });
+
+  it("renders a templated assets folder before resolving", () => {
+    const ctx = { question: { title_slug: "two-sum" } };
+    const assetsDir = renderTemplate("assets/{{ question.title_slug }}", ctx);
+    const storage = `${assetsDir}/img_1.png`;
+    expect(storage).toBe("assets/two-sum/img_1.png");
     expect(
-      assetReference(
-        "/assets",
-        "",
-        "assets/two-sum/img_1.png",
-        "two-sum",
-        "img_1.png"
-      )
-    ).toBe("/assets/two-sum/img_1.png");
+      assetReference("", "solutions/two-sum", storage, "img_1.png")
+    ).toBe("../../assets/two-sum/img_1.png");
   });
 });
 

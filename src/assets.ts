@@ -70,11 +70,10 @@ export function assetReference(
   assetRef: string,
   fromDir: string,
   toFile: string,
-  slug: string,
   filename: string
 ): string {
   return assetRef
-    ? `${assetRef}/${slug}/${filename}`
+    ? `${assetRef}/${filename}`
     : relativeAssetPath(fromDir, toFile);
 }
 

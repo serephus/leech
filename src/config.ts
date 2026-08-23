@@ -160,7 +160,7 @@ export function parseConfig(raw: string): LeechConfig {
   return parsed.data;
 }
 
-function normalizeDestination(dest: string): string {
+export function normalizeDestination(dest: string): string {
   return dest.replace(/^\/+|\/+$/g, "");
 }
 

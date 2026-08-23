@@ -3,6 +3,7 @@ import { applyFilters } from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
 import type { CommitFile } from "./git";
 import { LeetCodeClient } from "./leetcode";
+import { normalizeDestination } from "./config";
 import {
   assetFilename,
   assetReference,
@@ -123,8 +124,12 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     const context = buildContext(details, question);
 
     // Plan asset downloads: every absolute http(s) img src in the problem HTML
-    // maps to `<assets>/<slug>/<filename>` at the repo root.
-    const assetsDir = config.assets;
+    // maps to `<assets>/<filename>` at the repo root. `assets` is a template
+    // rendered per submission — e.g. `assets/{{ question.title_slug }}` groups
+    // images per question; empty renders mean assets are disabled.
+    const assetsDir = normalizeDestination(
+      renderTemplate(config.assets, context)
+    );
     const assetPlan: { url: string; filename: string }[] = [];
     if (assetsDir) {
       const used = new Set<string>();
@@ -161,7 +166,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     );
 
     const assetFiles: CommitFile[] = okAssets.map((a) => ({
-      path: `${assetsDir}/${question.titleSlug}/${a.filename}`,
+      path: `${assetsDir}/${a.filename}`,
       content: assetBytes.get(a.url)!,
       encoding: "base64",
     }));
@@ -177,8 +182,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
           assetReference(
             config.assetRef,
             dir,
-            `${assetsDir}/${question.titleSlug}/${a.filename}`,
-            question.titleSlug,
+            `${assetsDir}/${a.filename}`,
             a.filename
           )
         );
