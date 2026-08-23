@@ -70,6 +70,8 @@ jobs:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
           leetcode-csrf-token: ${{ secrets.LEETCODE_CSRF_TOKEN }}
+          dry-run: "false"          # optional; render and log only, create no commits
+          verbose: "false"          # optional; verbose logging
           # The `|` after `config:` means its value is one inline YAML string
           # (the leech configuration), not structured keys of this workflow
           # file — keep it indented under `config:`.
@@ -77,12 +79,24 @@ jobs:
           # only accept flatten key-value pairs inputs
           config: |
             destination: "solutions"
+            assets: "assets"
             filters:
               status: accepted
               languages: [python3, typescript]
+              excludeLanguages: []
+              problems: []
+              excludeProblems: []
+              since: null
+              until: null
             commit:
               prefix: "leech:"
               message: "Sync {{ question.title }} ({{ submission.lang }})"
+              authorName: leech-bot
+              authorEmail: leech-bot@users.noreply.github.com
+            client:
+              delayMs: 250
+            render:
+              throwOnUndefined: false
             files:
               - filename: "{{ question.title_slug }}/README.md"
                 content: |-
@@ -95,7 +109,16 @@ jobs:
 
                   # {{ question.title }}
 
-                  {{ question.content | toMarkdown({ gfm: true }) }}
+                  {{ question.content | toMarkdown({ gfm: true, superscript: ["^", "^"], subscript: ["~", "~"] }) }}
+              - filename: "{{ question.title_slug }}.typ"
+                content: |
+                  = {{ question.title }}
+
+                  {{ question.content | toTypst({ superscript: ["^", ""], subscript: ["_", ""] }) }}
+
+                  == Submission
+
+                  {{ submission.code | codeBlock(submission.lang_ext) }}
               - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
@@ -113,35 +136,53 @@ Action inputs:
 
 ## Configuration reference
 
+Every option with its default value. Omit any key to use the default.
+
 ```yaml
-repo:                       # optional; defaults to the repo the action runs in
+repo:                       # optional; default: the repo the action runs in
   owner: serephus
   name: my-solutions
-branch: main                # optional; defaults to the repo's default branch
-destination: solutions      # optional; files are written under this folder (default: solutions)
-assets: assets              # optional; folder under destination for downloaded images (default: assets, "" disables)
+branch: main                # optional; default: the repo's default branch
+destination: solutions      # default: "solutions"; files are written under this folder
+assets: assets              # default: "assets"; folder under destination for downloaded
+                            #   problem images ("" disables downloading)
 filters:
-  status: accepted          # accepted | all (default: accepted)
-  languages: [python3]      # only these languages
-  excludeLanguages: []      # skip these languages
-  problems: [two-sum]       # only these problem slugs
-  excludeProblems: []       # skip these problem slugs
-  since: "2024-01-01"       # optional lower bound (date, ISO string, or unix seconds)
-  until: null               # optional upper bound
-files:                      # optional; defaults to the markdown layout below
+  status: accepted          # default: "accepted"; accepted | all
+  languages: [python3]      # default: []; only these languages
+  excludeLanguages: []      # default: []; skip these languages
+  problems: [two-sum]       # default: []; only these problem slugs
+  excludeProblems: []       # default: []; skip these problem slugs
+  since: "2024-01-01"       # default: null; lower bound (date, ISO string, or unix seconds)
+  until: null               # default: null; upper bound
+files:                      # optional; default: the markdown layout below
   - filename: "{{ question.title_slug }}/README.md"
-    content: "{{ question.content | toMarkdown({ gfm: true }) }}"
+    content: |-
+      ---
+      title: "{{ question.title }}"
+      id: {{ question.frontend_id }}
+      slug: "{{ question.title_slug }}"
+      difficulty: {{ question.difficulty }}
+      lang: "{{ submission.lang }}"
+      status: "{{ submission.status }}"
+      timestamp: {{ submission.timestamp }}
+      date: "{{ submission.timestamp | datefmt('YYYY-MM-DD') }}"
+      tags: [{% for t in question.tags %}"{{ t }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+      ---
+
+      # {{ question.title }}
+
+      {{ question.content | toMarkdown({ gfm: true }) }}
   - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
-  prefix: "leech: "          # message prefix; also the sync-commit marker (see Watermark)
-  message: "Sync {{ question.title }} ({{ submission.lang }})"
-  authorName: leech-bot
-  authorEmail: leech-bot@users.noreply.github.com
+  prefix: "leech: "          # default: "leech: "; message prefix; sync-commit marker (see Watermark)
+  message: "Sync {{ question.title }} ({{ submission.lang }})"  # default
+  authorName: leech-bot      # default: "leech-bot"
+  authorEmail: leech-bot@users.noreply.github.com  # default
 client:
-  delayMs: 250              # delay between LeetCode GraphQL calls (rate-limit courtesy)
+  delayMs: 250              # default: 250; delay between LeetCode GraphQL calls (ms)
 render:
-  throwOnUndefined: false   # throw on undefined template variables (default: render empty)
+  throwOnUndefined: false   # default: false; throw on undefined template variables
 ```
 
 ### Assets
@@ -243,6 +284,8 @@ Each conversion filter accepts an options object as a template argument, e.g.
 - **`toMarkdown(options?)`** — markdown. Options: `gfm` (default `false`;
 enable GitHub-flavored tables/strikethrough/task lists), `tables`, `strikethrough`,
 `taskListItems` (default `true` each; only apply when `gfm` is enabled),
+`superscript` / `subscript` (wrapper `[prefix, suffix]` around `<sup>`/`<sub>`
+content, default `["^", "^"]` / `["~", "~"]`; `false` renders inline),
 `headingStyle` (`atx` | `setext`), `hr`, `bulletListMarker` (`-` | `*` | `+`),
 `codeBlockStyle` (`fenced` | `indented`), `fence` (` ``` ` | `~~~`),
 `emDelimiter` (`*` | `_`), `strongDelimiter` (`**` | `__`), `linkStyle`
@@ -251,7 +294,9 @@ enable GitHub-flavored tables/strikethrough/task lists), `tables`, `strikethroug
 - **`toTypst(options?)`** — [Typst](https://typst.app) markup. Options:
   `headingPrefixes` (prefix per heading level 1-6, default
   `["", "= ", "== ", ...]`), `codeFence` (default ` ``` `), `escape`
-  (default `true`), and `hr` (default `#line(length: 100%)`).
+  (default `true`), `hr` (default `#line(length: 100%)`), and `superscript` /
+  `subscript` (wrapper `[prefix, suffix]`, default `["^", ""]` / `["_", ""]`;
+  `false` renders inline).
 
 The same converters are available as factories for embedding code:
 `makeToMarkdown(options)` and `makeToTypst(options)`. `toGfm` is kept as an
