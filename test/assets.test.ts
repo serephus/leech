@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   assetFilename,
+  assetReference,
   extractAssetUrls,
   relativeAssetPath,
   rewriteAssetUrls,
 } from "../src/assets";
-import { toMarkdown, toTypst } from "../src/render";
+import { renderTemplate, toMarkdown, toTypst } from "../src/render";
 
 describe("extractAssetUrls", () => {
   it("finds absolute http(s) img srcs only", () => {
@@ -64,6 +65,52 @@ describe("relativeAssetPath", () => {
     expect(
       relativeAssetPath("", "solutions/assets/two-sum/img_1.png")
     ).toBe("solutions/assets/two-sum/img_1.png");
+  });
+
+  it("reaches root-level assets from nested files", () => {
+    expect(
+      relativeAssetPath("solutions/two-sum", "assets/two-sum/img_1.png")
+    ).toBe("../../assets/two-sum/img_1.png");
+    expect(relativeAssetPath("solutions", "assets/two-sum/img_1.png")).toBe(
+      "../assets/two-sum/img_1.png"
+    );
+    expect(relativeAssetPath("", "assets/two-sum/img_1.png")).toBe(
+      "assets/two-sum/img_1.png"
+    );
+  });
+});
+
+describe("assetReference", () => {
+  it("uses relative paths when assetRef is empty", () => {
+    expect(
+      assetReference(
+        "",
+        "solutions/two-sum",
+        "assets/img_1.png",
+        "img_1.png"
+      )
+    ).toBe("../../assets/img_1.png");
+  });
+
+  it("uses root-absolute paths when assetRef is set", () => {
+    expect(
+      assetReference(
+        "/images",
+        "solutions/two-sum",
+        "static/images/img_1.png",
+        "img_1.png"
+      )
+    ).toBe("/images/img_1.png");
+  });
+
+  it("renders a templated assets folder before resolving", () => {
+    const ctx = { question: { title_slug: "two-sum" } };
+    const assetsDir = renderTemplate("assets/{{ question.title_slug }}", ctx);
+    const storage = `${assetsDir}/img_1.png`;
+    expect(storage).toBe("assets/two-sum/img_1.png");
+    expect(
+      assetReference("", "solutions/two-sum", storage, "img_1.png")
+    ).toBe("../../assets/two-sum/img_1.png");
   });
 });
 
