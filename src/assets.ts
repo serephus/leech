@@ -48,33 +48,19 @@ export function rewriteAssetUrls(
 }
 
 /**
- * Computes a path for `toFile` relative to the directory `fromDir`.
- * Both paths are slash-separated and may share a common prefix.
+ * Resolves how a downloaded asset is referenced in output files. References
+ * are repo-root-absolute (`/...`):
+ * - `assets` empty (`""`): the full storage path, e.g. storage
+ *   `solutions/images/<slug>/<file>` → `/solutions/images/<slug>/<file>`.
+ * - `assets` set (e.g. `"static"`): the value is the storage root and is
+ *   stripped, e.g. `static/images/<slug>/<file>` → `/images/<slug>/<file>`.
+ * If the storage path does not start with the value, the whole path is used.
  */
-export function relativeAssetPath(fromDir: string, toFile: string): string {
-  const from = fromDir.split("/").filter(Boolean);
-  const to = toFile.split("/").filter(Boolean);
-  let i = 0;
-  while (i < from.length && i < to.length && from[i] === to[i]) i++;
-  const ups = from.length - i;
-  return [...new Array(ups).fill(".."), ...to.slice(i)].join("/") || ".";
-}
-
-/**
- * Resolves how an asset is referenced from a rendered file.
- * - `assetRef` empty: relative path from `fromDir` to the stored file `toFile`.
- * - `assetRef` set (e.g. "/images"): root-absolute `${assetRef}/${slug}/${filename}`,
- *   the SSG convention (storage location is configured separately via `assets`).
- */
-export function assetReference(
-  assetRef: string,
-  fromDir: string,
-  toFile: string,
-  filename: string
-): string {
-  return assetRef
-    ? `${assetRef}/${filename}`
-    : relativeAssetPath(fromDir, toFile);
+export function assetReference(assets: string, storagePath: string): string {
+  if (!assets) return `/${storagePath}`;
+  return assets && storagePath.startsWith(`${assets}/`)
+    ? `/${storagePath.slice(assets.length + 1)}`
+    : `/${storagePath}`;
 }
 
 /** Downloads an asset into a Buffer; throws on a non-OK response. */

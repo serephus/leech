@@ -8,8 +8,7 @@ describe("parseConfig", () => {
     expect(cfg.commit.prefix).toBe("leech:");
     expect(cfg.commit.message).toContain("{{ question.title }}");
     expect(cfg.destination).toBe("solutions");
-    expect(cfg.assets).toBe("assets");
-    expect(cfg.assetRef).toBe("");
+    expect(cfg.assets).toBeNull();
     expect(cfg.client.delayMs).toBe(250);
     expect(cfg.render.throwOnUndefined).toBe(false);
     expect(cfg.branch).toBeUndefined();
@@ -29,15 +28,9 @@ describe("parseConfig", () => {
   });
 
   it("normalizes assets and allows disabling", () => {
+    expect(parseConfig('assets: null').assets).toBeNull();
     expect(parseConfig('assets: ""').assets).toBe("");
-    expect(parseConfig("assets: /images/").assets).toBe("images");
-  });
-
-  it("normalizes assetRef", () => {
-    expect(parseConfig('assetRef: ""').assetRef).toBe("");
-    expect(parseConfig("assetRef: /images").assetRef).toBe("/images");
-    expect(parseConfig("assetRef: /images/").assetRef).toBe("/images");
-    expect(parseConfig("assetRef: images").assetRef).toBe("/images");
+    expect(parseConfig("assets: /static/images/").assets).toBe("static/images");
   });
 
   it("parses filters and bounds", () => {

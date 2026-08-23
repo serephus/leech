@@ -12,9 +12,9 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   enables GitHub-flavored tables, strikethrough, and task lists) or the
   `toTypst` filter (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
 - **Local assets** — images linked from problem descriptions are downloaded
-  into the `assets` folder (a template, so per-question subfolders are opt-in)
-  and references are rewritten to local relative paths in the markdown/typst
-  output, so the repo stays self-contained (see [Assets](#assets)).
+  into `<prefix>/images/<slug>/` and referenced with repo-root-absolute paths
+  in the markdown/typst output, so the repo stays self-contained
+  (see [Assets](#assets)).
 - **Submission filtering** — status, language, problem, and time-window filters.
 
 ## Quickstart
@@ -58,8 +58,7 @@ jobs:
           # only accept flatten key-value pairs inputs
           config: |
             destination: "solutions"
-            assets: "assets" # downloaded assets are placed directly in here, could be a template
-            assetRef: "" # refrences in markdown/typst are relative to this path
+            assets: null # default; null = no downloads, "" = under destination, path = static root
             filters:
               status: accepted
               languages: [python3, typescript]
@@ -124,11 +123,9 @@ repo:                       # optional; default: the repo the action runs in
   name: blog
 branch: deploy              # optional; default: the repo's default branch
 destination: solutions      # default: "solutions"; files are written under this folder
-assets: assets              # default: "assets"; template for the storage folder at
-                            #   repo root (rendered per submission, e.g.
-                            #   "assets/{{ question.title_slug }}"); "" disables
-assetRef: ""                # default: ""; root-absolute reference prefix for SSG
-                            #   (e.g. "/static"); empty = relative references
+assets: null               # default; images are stored under <prefix>/images/<slug>/<file>,
+                            #   where prefix is the destination (""), the configured value
+                            #   (e.g. "static" → static/images/...), or nothing (null = no downloads)
 filters:
   status: accepted          # default: "accepted"; accepted | all
   languages: [python3]      # default: []; only these languages
@@ -277,34 +274,25 @@ become `untitled`.
 ### Assets
 
 Images linked from problem descriptions (e.g. `https://assets.leetcode.com/...`)
-are downloaded automatically and their references are rewritten to local paths in
-both `toMarkdown` and `toTypst` output. `assets` is a template rendered per
-submission (same context as file templates); by default images land flat in
-`<assets>/<filename>` at the repo root (e.g. `assets/img_1.png`) and each
-rendered file references them with a path relative to its own directory
-(e.g. `../../assets/img_1.png`). Add the question slug to group per problem:
-`assets: "assets/{{ question.title_slug }}"` → `assets/two-sum/img_1.png`,
-referenced as `../../assets/two-sum/img_1.png`.
+are downloaded automatically and their references are rewritten in both
+`toMarkdown` and `toTypst` output. `assets` controls where they go:
 
-For SSG frameworks that serve a static directory (Zola/Hugo: files under
-`static/`, referenced as `/images/...`), set `assets` to the storage folder and
-`assetRef` to the root-absolute reference prefix:
+- `null` (default) — don't download; original URLs are kept.
+- `""` — store under the `destination` folder: `solutions/images/<slug>/<file>`,
+  referenced repo-root-absolute as `/solutions/images/<slug>/<file>`.
+- `"static"` — store at `static/images/<slug>/<file>`, referenced as
+  `/images/<slug>/<file>` (the configured value is the static root and is
+  stripped from references — the SSG convention).
 
 ```yaml
-assets: "static/images"
-assetRef: "/images"
+assets: ""        # plain GitHub-style: images under the destination folder
+# assets: "static" # SSG-style (Zola/Hugo): static/images/..., refs /images/...
 ```
 
-Files are stored under `static/images/`, referenced as `/images/<filename>` —
-which Zola/Hugo resolve to the static directory (root-absolute references are
-flat; per-question URL paths would need the slug in `assetRef`, which is not
-currently templated). Note that root-absolute references are a markdown/SSG
-concept; in Typst
-`#image("/images/...")` is a filesystem-absolute path, so keep relative
-references for Typst output.
-
-Set `assets: ""` to disable downloading and keep the original URLs. A failed
-download logs a warning and leaves the original URL; it does not fail the sync.
+Note that root-absolute references are a markdown/SSG concept; in Typst
+`#image("/images/...")` is a filesystem-absolute path, so keep that in mind for
+Typst output. A failed download logs a warning and leaves the original URL; it
+does not fail the sync.
 
 If `files` is omitted, the default markdown layout is used: per problem a
 `README.md` (YAML frontmatter + converted description) and one code file per

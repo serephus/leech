@@ -116,12 +116,9 @@ export const configSchema = z.object({
     .transform(normalizeDestination),
   assets: z
     .string()
-    .default("assets")
-    .transform(normalizeDestination),
-  assetRef: z
-    .string()
-    .default("")
-    .transform(normalizeAssetRef),
+    .nullable()
+    .default(null)
+    .transform(normalizeAssets),
   filters: filterConfigSchema,
   files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
   commit: commitConfigSchema,
@@ -165,12 +162,11 @@ export function normalizeDestination(dest: string): string {
 }
 
 /**
- * Normalizes an asset reference prefix: leading "/", no trailing "/",
- * empty string when empty (relative references).
+ * Normalizes the merged assets config: strips leading/trailing slashes from a
+ * path value; `null` (disabled) and `""` (assets under destination) pass through.
  */
-function normalizeAssetRef(ref: string): string {
-  const trimmed = ref.trim().replace(/^\/+|\/+$/g, "");
-  return trimmed ? `/${trimmed}` : "";
+function normalizeAssets(value: string | null): string | null {
+  return value === null ? null : value.trim().replace(/^\/+|\/+$/g, "");
 }
 
 /** Parses a filter bound: unix seconds, a numeric string, or an ISO/date string. */
