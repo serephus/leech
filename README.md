@@ -11,6 +11,10 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   `question.content`; convert it with the `toMarkdown` filter (`{ gfm: true }`
   enables GitHub-flavored tables, strikethrough, and task lists) or the
   `toTypst` filter (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
+- **Local assets** — images linked from problem descriptions are downloaded
+  into `<destination>/<assets>/<slug>/` and references are rewritten to local
+  relative paths in the markdown/typst output, so the repo stays
+  self-contained (see [Assets](#assets)).
 - **Submission filtering** — status, language, problem, and time-window filters.
 - **Robust watermark** — no state files: the last synced submission is derived
   from commit history (see [Watermark](#watermark)).
@@ -115,6 +119,7 @@ repo:                       # optional; defaults to the repo the action runs in
   name: my-solutions
 branch: main                # optional; defaults to the repo's default branch
 destination: solutions      # optional; files are written under this folder (default: solutions)
+assets: assets              # optional; folder under destination for downloaded images (default: assets, "" disables)
 filters:
   status: accepted          # accepted | all (default: accepted)
   languages: [python3]      # only these languages
@@ -138,6 +143,18 @@ client:
 render:
   throwOnUndefined: false   # throw on undefined template variables (default: render empty)
 ```
+
+### Assets
+
+Images linked from problem descriptions (e.g. `https://assets.leetcode.com/...`)
+are downloaded automatically and their references are rewritten to local paths in
+both `toMarkdown` and `toTypst` output. Assets are stored under
+`<destination>/<assets>/<slug>/` (e.g. `solutions/assets/two-sum/img_1.png`) and
+each rendered file references them with a path relative to its own directory
+(e.g. `../assets/two-sum/img_1.png`), so the repository is self-contained.
+
+Set `assets: ""` to disable downloading and keep the original URLs. A failed
+download logs a warning and leaves the original URL; it does not fail the sync.
 
 If `files` is omitted, the default markdown layout is used: per problem a
 `README.md` (YAML frontmatter + converted description) and one code file per

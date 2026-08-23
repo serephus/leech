@@ -114,6 +114,10 @@ export const configSchema = z.object({
     .string()
     .default("solutions")
     .transform(normalizeDestination),
+  assets: z
+    .string()
+    .default("assets")
+    .transform(normalizeDestination),
   filters: filterConfigSchema,
   files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
   commit: commitConfigSchema,

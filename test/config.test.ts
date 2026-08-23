@@ -8,6 +8,7 @@ describe("parseConfig", () => {
     expect(cfg.commit.prefix).toBe("leech:");
     expect(cfg.commit.message).toContain("{{ question.title }}");
     expect(cfg.destination).toBe("solutions");
+    expect(cfg.assets).toBe("assets");
     expect(cfg.client.delayMs).toBe(250);
     expect(cfg.render.throwOnUndefined).toBe(false);
     expect(cfg.branch).toBeUndefined();
@@ -24,6 +25,11 @@ describe("parseConfig", () => {
       "{{ question.content | toMarkdown({ gfm: true }) }}"
     );
     expect(cfg.files[1]!.filename).toContain("{{ submission.lang_ext }}");
+  });
+
+  it("normalizes assets and allows disabling", () => {
+    expect(parseConfig('assets: ""').assets).toBe("");
+    expect(parseConfig("assets: /images/").assets).toBe("images");
   });
 
   it("parses filters and bounds", () => {
