@@ -2,7 +2,9 @@ import type { Octokit } from "@octokit/rest";
 
 export interface CommitFile {
   path: string;
-  content: string;
+  content: string | Buffer;
+  /** Content encoding for the blob API; must be "base64" for binary buffers. */
+  encoding?: "utf-8" | "base64";
 }
 
 /**
@@ -63,8 +65,11 @@ export class SyncCommitter {
         this.octokit.git.createBlob({
           owner: this.owner,
           repo: this.repo,
-          content: f.content,
-          encoding: "utf-8",
+          content:
+            typeof f.content === "string"
+              ? f.content
+              : f.content.toString("base64"),
+          encoding: f.encoding ?? "utf-8",
         })
       )
     );
