@@ -7,7 +7,7 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
 - **Templated everything** — filename, content, and commit message are
   [Nunjucks](https://mozilla.github.io/nunjucks/) templates; one submission maps
   to one commit and may produce any number of files.
-- **Problem descriptions** — the raw problem HTML is available as
+- **Content Conversion** — the raw problem HTML is available as
   `question.content`; convert it with the `toMarkdown` filter (`{ gfm: true }`
   enables GitHub-flavored tables, strikethrough, and task lists) or the
   `toTypst` filter (custom rules for `<sup>`/`<sub>`, code blocks, and tables).
@@ -16,27 +16,6 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   and references are rewritten to local relative paths in the markdown/typst
   output, so the repo stays self-contained (see [Assets](#assets)).
 - **Submission filtering** — status, language, problem, and time-window filters.
-- **Robust watermark** — no state files: the last synced submission is derived
-  from commit history (see [Watermark](#watermark)).
-- **Overwrite semantics** — a re-submitted solution overwrites its file; the
-  latest submission always wins.
-- **Local CLI** — run the exact same pipeline from your shell for testing.
-- **Tag-based dist releases** — a workflow bundles `dist/` and moves the tag to
-  the bundle commit, so `uses: serephus/leech@vX.Y.Z` always resolves to a
-  working action (see [Dist workflow](#dist-workflow)).
-
-## How it works
-
-1. Fetch submissions newer than the watermark via LeetCode's GraphQL API
-   (`submissionList` query, authenticated with your cookies).
-2. Apply filters.
-3. For each remaining submission (oldest first): fetch full details
-   (code, runtime, memory, percentiles) and the problem description via
-   LeetCode's GraphQL API, render the configured files, and create **one git
-   commit per submission** with `author.date = submission timestamp`.
-4. Push the branch ref once at the end of the sync — all commits land in a
-   single ref update, so a run is atomic (either every submission lands or
-   none does).
 
 ## Quickstart
 
@@ -65,7 +44,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: serephus/leech@v2 # latest release tag (see Dist workflow)
+      - uses: serephus/leech@v4 # release tag (the main branch won't work)
         with:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
@@ -79,19 +58,19 @@ jobs:
           # only accept flatten key-value pairs inputs
           config: |
             destination: "solutions"
-            assets: "assets"
-            assetRef: ""
+            assets: "assets" # downloaded assets are placed directly in here, could be a template
+            assetRef: "" # refrences in markdown/typst are relative to this path
             filters:
               status: accepted
               languages: [python3, typescript]
               excludeLanguages: []
-              problems: []
+              problems: [] # empty means no filtering, same for languages
               excludeProblems: []
               since: null
               until: null
             commit:
-              prefix: "leech:"
-              message: "Sync {{ question.title }} ({{ submission.lang }})"
+              prefix: "leech: "
+              message: "{{ question.title }} ({{ submission.lang }})"
               authorName: leech-bot
               authorEmail: leech-bot@users.noreply.github.com
             client:
@@ -100,7 +79,7 @@ jobs:
               throwOnUndefined: false
             files:
               - filename: "{{ question.title_slug }}/README.md"
-                content: |-
+                content: |
                   ---
                   title: "{{ question.title }}"
                   slug: "{{ question.title_slug }}"
@@ -110,7 +89,7 @@ jobs:
 
                   # {{ question.title }}
 
-                  {{ question.content | toMarkdown({ gfm: true, superscript: ["^", "^"], subscript: ["~", "~"] }) }}
+                  {{ question.content | toMarkdown({ gfm: true, superscript: ["^", ""], subscript: ["_", ""] }) }}
               - filename: "{{ question.title_slug }}.typ"
                 content: |
                   = {{ question.title }}
@@ -119,7 +98,7 @@ jobs:
 
                   == Submission
 
-                  {{ submission.code | codeBlock(submission.lang_ext) }}
+                  {{ submission.code | codeBlock(submission.lang) }}
               - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
                 content: "{{ submission.code }}"
 ```
@@ -142,14 +121,14 @@ Every option with its default value. Omit any key to use the default.
 ```yaml
 repo:                       # optional; default: the repo the action runs in
   owner: serephus
-  name: my-solutions
-branch: main                # optional; default: the repo's default branch
+  name: blog
+branch: deploy              # optional; default: the repo's default branch
 destination: solutions      # default: "solutions"; files are written under this folder
 assets: assets              # default: "assets"; template for the storage folder at
                             #   repo root (rendered per submission, e.g.
                             #   "assets/{{ question.title_slug }}"); "" disables
-assetRef: ""               # default: ""; root-absolute reference prefix for SSG
-                            #   (e.g. "/images"); empty = relative references
+assetRef: ""                # default: ""; root-absolute reference prefix for SSG
+                            #   (e.g. "/static"); empty = relative references
 filters:
   status: accepted          # default: "accepted"; accepted | all
   languages: [python3]      # default: []; only these languages
@@ -179,8 +158,8 @@ files:                      # optional; default: the markdown layout below
   - filename: "{{ question.title_slug }}/{{ submission.lang }}.{{ submission.lang_ext }}"
     content: "{{ submission.code }}"
 commit:
-  prefix: "leech: "          # default: "leech: "; message prefix; sync-commit marker (see Watermark)
-  message: "Sync {{ question.title }} ({{ submission.lang }})"  # default
+  prefix: "leech: "          # default: "leech: "; message prefix; sync-commit marker
+  message: "{{ question.title }} ({{ submission.lang }})"  # default
   authorName: leech-bot      # default: "leech-bot"
   authorEmail: leech-bot@users.noreply.github.com  # default
 client:
@@ -188,42 +167,6 @@ client:
 render:
   throwOnUndefined: false   # default: false; throw on undefined template variables
 ```
-
-### Assets
-
-Images linked from problem descriptions (e.g. `https://assets.leetcode.com/...`)
-are downloaded automatically and their references are rewritten to local paths in
-both `toMarkdown` and `toTypst` output. `assets` is a template rendered per
-submission (same context as file templates); by default images land flat in
-`<assets>/<filename>` at the repo root (e.g. `assets/img_1.png`) and each
-rendered file references them with a path relative to its own directory
-(e.g. `../../assets/img_1.png`). Add the question slug to group per problem:
-`assets: "assets/{{ question.title_slug }}"` → `assets/two-sum/img_1.png`,
-referenced as `../../assets/two-sum/img_1.png`.
-
-For SSG frameworks that serve a static directory (Zola/Hugo: files under
-`static/`, referenced as `/images/...`), set `assets` to the storage folder and
-`assetRef` to the root-absolute reference prefix:
-
-```yaml
-assets: "static/images"
-assetRef: "/images"
-```
-
-Files are stored under `static/images/`, referenced as `/images/<filename>` —
-which Zola/Hugo resolve to the static directory (root-absolute references are
-flat; per-question URL paths would need the slug in `assetRef`, which is not
-currently templated). Note that root-absolute references are a markdown/SSG
-concept; in Typst
-`#image("/images/...")` is a filesystem-absolute path, so keep relative
-references for Typst output.
-
-Set `assets: ""` to disable downloading and keep the original URLs. A failed
-download logs a warning and leaves the original URL; it does not fail the sync.
-
-If `files` is omitted, the default markdown layout is used: per problem a
-`README.md` (YAML frontmatter + converted description) and one code file per
-language.
 
 ## Templates
 
@@ -331,25 +274,41 @@ Rendered filenames are sanitized per path segment: reserved characters
 collapse, leading/trailing dots and dashes are stripped, and empty segments
 become `untitled`.
 
-## Watermark
+### Assets
 
-A submission is "already synced" when a commit on the branch whose message
-starts with `commit.prefix` has `author.date` >= the submission timestamp —
-leech stamps every sync commit with the submission's timestamp as the author
-date. The watermark is found by walking the branch history (newest first,
-100 commits per page) and taking the newest author date among prefixed commits.
+Images linked from problem descriptions (e.g. `https://assets.leetcode.com/...`)
+are downloaded automatically and their references are rewritten to local paths in
+both `toMarkdown` and `toTypst` output. `assets` is a template rendered per
+submission (same context as file templates); by default images land flat in
+`<assets>/<filename>` at the repo root (e.g. `assets/img_1.png`) and each
+rendered file references them with a path relative to its own directory
+(e.g. `../../assets/img_1.png`). Add the question slug to group per problem:
+`assets: "assets/{{ question.title_slug }}"` → `assets/two-sum/img_1.png`,
+referenced as `../../assets/two-sum/img_1.png`.
 
-- There is no state file and nothing to migrate.
-- **Changing `commit.prefix` resets the watermark** — old sync commits stop
-  matching and everything is re-synced (overwriting existing files, one commit
-  per submission). Pick a prefix and keep it.
-- Migrating from another tool: point `commit.prefix` at the header your old
-  sync commits use (e.g. `Sync LeetCode submission` or `[LeetCode Sync]`) to
-  inherit the watermark from existing history.
+For SSG frameworks that serve a static directory (Zola/Hugo: files under
+`static/`, referenced as `/images/...`), set `assets` to the storage folder and
+`assetRef` to the root-absolute reference prefix:
 
-Existing files are **overwritten** when a submission re-syncs, so an improved
-solution replaces the old file. To avoid overwrites, include the submission id
-in the filename, e.g. `{{ submission.id }}/...`.
+```yaml
+assets: "static/images"
+assetRef: "/images"
+```
+
+Files are stored under `static/images/`, referenced as `/images/<filename>` —
+which Zola/Hugo resolve to the static directory (root-absolute references are
+flat; per-question URL paths would need the slug in `assetRef`, which is not
+currently templated). Note that root-absolute references are a markdown/SSG
+concept; in Typst
+`#image("/images/...")` is a filesystem-absolute path, so keep relative
+references for Typst output.
+
+Set `assets: ""` to disable downloading and keep the original URLs. A failed
+download logs a warning and leaves the original URL; it does not fail the sync.
+
+If `files` is omitted, the default markdown layout is used: per problem a
+`README.md` (YAML frontmatter + converted description) and one code file per
+language.
 
 ## Filters
 
@@ -397,6 +356,39 @@ pnpm build         # esbuild -> dist/index.js + dist/cli.js
 The flake packages the CLI (`nix build`, `nix run .#`); when `pnpm-lock.yaml`
 changes, `nix build` reports the new dependency hash to paste into
 `flake.nix`'s `fetchPnpmDeps`.
+
+## How it works
+
+1. Fetch submissions newer than the watermark via LeetCode's GraphQL API
+   (`submissionList` query, authenticated with your cookies).
+2. Apply filters.
+3. For each remaining submission (oldest first): fetch full details
+   (code, runtime, memory, percentiles) and the problem description via
+   LeetCode's GraphQL API, render the configured files, and create **one git
+   commit per submission** with `author.date = submission timestamp`.
+4. Push the branch ref once at the end of the sync — all commits land in a
+   single ref update, so a run is atomic (either every submission lands or
+   none does).
+
+## Watermark
+
+A submission is "already synced" when a commit on the branch whose message
+starts with `commit.prefix` has `author.date` >= the submission timestamp —
+leech stamps every sync commit with the submission's timestamp as the author
+date. The watermark is found by walking the branch history (newest first,
+100 commits per page) and taking the newest author date among prefixed commits.
+
+- There is no state file and nothing to migrate.
+- **Changing `commit.prefix` resets the watermark** — old sync commits stop
+  matching and everything is re-synced (overwriting existing files, one commit
+  per submission). Pick a prefix and keep it.
+- Migrating from another tool: point `commit.prefix` at the header your old
+  sync commits use (e.g. `Sync LeetCode submission` or `[LeetCode Sync]`) to
+  inherit the watermark from existing history.
+
+Existing files are **overwritten** when a submission re-syncs, so an improved
+solution replaces the old file. To avoid overwrites, include the submission id
+in the filename, e.g. `{{ submission.id }}/...`.
 
 ## Roadmap
 
