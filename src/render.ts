@@ -149,8 +149,19 @@ export function datefmt(value: number | string | Date, fmt = "YYYY-MM-DD"): stri
 /* HTML -> Markdown                                                    */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Wrapper `[prefix, suffix]` applied around `<sup>`/`<sub>` content, or
+ * `false` to render the content inline without any wrapper.
+ */
+export interface SupSubOptions {
+  /** Wrapper for `<sup>` (markdown default `["^", "^"]`, typst default `["^", ""]`). */
+  superscript?: [string, string] | false;
+  /** Wrapper for `<sub>` (markdown default `["~", "~"]`, typst default `["_", ""]`). */
+  subscript?: [string, string] | false;
+}
+
 /** Options for markdown conversion (Turndown options plus GFM toggles). */
-export interface MarkdownOptions {
+export interface MarkdownOptions extends SupSubOptions {
   /** Enable GitHub-flavored markdown (tables, strikethrough, task lists); default false. */
   gfm?: boolean;
   /** Convert tables (default true; only applies when gfm is enabled). */
@@ -202,14 +213,21 @@ function createTurndown(options: MarkdownOptions): TurndownService {
       });
     }
   }
-  service.addRule("superscript", {
-    filter: ["sup"],
-    replacement: (content: string) => `^${content}^`,
-  });
-  service.addRule("subscript", {
-    filter: ["sub"],
-    replacement: (content: string) => `~${content}~`,
-  });
+  const { superscript = ["^", "^"], subscript = ["~", "~"] } = options;
+  if (superscript) {
+    service.addRule("superscript", {
+      filter: ["sup"],
+      replacement: (content: string) =>
+        `${superscript[0]}${content}${superscript[1]}`,
+    });
+  }
+  if (subscript) {
+    service.addRule("subscript", {
+      filter: ["sub"],
+      replacement: (content: string) =>
+        `${subscript[0]}${content}${subscript[1]}`,
+    });
+  }
   return service;
 }
 
@@ -252,7 +270,7 @@ export const toGfm = makeToMarkdown({ gfm: true });
 /* ------------------------------------------------------------------ */
 
 /** Options for Typst conversion. */
-export interface TypstOptions {
+export interface TypstOptions extends SupSubOptions {
   /** Heading prefixes for levels 1-6 (default `["", "= ", "== ", ...]`). */
   headingPrefixes?: string[];
   /** Code fence marker (default "```"). */
@@ -270,6 +288,8 @@ interface TypstRendererOptions {
   codeFence: string;
   escape: boolean;
   hr: string;
+  superscript: [string, string] | false;
+  subscript: [string, string] | false;
 }
 
 const TYPST_DEFAULTS: TypstRendererOptions = {
@@ -277,6 +297,8 @@ const TYPST_DEFAULTS: TypstRendererOptions = {
   codeFence: "```",
   escape: true,
   hr: "#line(length: 100%)",
+  superscript: ["^", ""],
+  subscript: ["_", ""],
 };
 
 /** Escapes Typst markup special characters in plain text. */
@@ -358,9 +380,13 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "img":
         return `#image("${node.getAttribute("src") ?? ""}")`;
       case "sup":
-        return `^${inline(node)}`;
+        return opts.superscript
+          ? `${opts.superscript[0]}${inline(node)}${opts.superscript[1]}`
+          : inline(node);
       case "sub":
-        return `_${inline(node)}`;
+        return opts.subscript
+          ? `${opts.subscript[0]}${inline(node)}${opts.subscript[1]}`
+          : inline(node);
       case "del":
       case "s":
       case "strike":

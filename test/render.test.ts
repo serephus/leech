@@ -61,6 +61,21 @@ describe("toMarkdown", () => {
     );
     expect(md).not.toContain("|");
   });
+
+  it("supports custom sup/sub wrappers", () => {
+    const md = toMarkdown("<p>10<sup>9</sup> H<sub>2</sub></p>", {
+      superscript: ["<sup>", "</sup>"],
+      subscript: ["<sub>", "</sub>"],
+    });
+    expect(md).toContain("10<sup>9</sup>");
+    expect(md).toContain("H<sub>2</sub>");
+  });
+
+  it("can disable sup wrapping", () => {
+    const md = toMarkdown("<p>10<sup>9</sup></p>", { superscript: false });
+    expect(md).toContain("109");
+    expect(md).not.toContain("^");
+  });
 });
 
 describe("toMarkdown gfm mode", () => {
@@ -142,6 +157,20 @@ describe("makeToTypst", () => {
   it("customizes the horizontal rule", () => {
     const ts = makeToTypst({ hr: "#line()" })("<hr>");
     expect(ts).toContain("#line()");
+  });
+
+  it("supports custom sup/sub wrappers", () => {
+    const ts = makeToTypst({
+      superscript: ["#super[", "]"],
+      subscript: ["#sub[", "]"],
+    })("<p>10<sup>9</sup> H<sub>2</sub></p>");
+    expect(ts).toContain("10#super[9]");
+    expect(ts).toContain("H#sub[2]");
+  });
+
+  it("can disable sub wrapping", () => {
+    const ts = makeToTypst({ subscript: false })("<p>H<sub>2</sub>O</p>");
+    expect(ts).toContain("H2O");
   });
 });
 
