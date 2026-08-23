@@ -228,6 +228,23 @@ function createTurndown(options: MarkdownOptions): TurndownService {
         `${subscript[0]}${content}${subscript[1]}`,
     });
   }
+  // <pre> without a <code> child (e.g. LeetCode example blocks with bold
+  // labels): separate the lines with blank lines so each stays a paragraph.
+  service.addRule("preText", {
+    filter: (node) => {
+      const first = [...node.childNodes].find(
+        (c) => c.nodeType !== 3 || (c.textContent ?? "").trim() !== ""
+      );
+      return node.nodeName === "PRE" && first?.nodeName !== "CODE";
+    },
+    replacement: (content: string) =>
+      `\n\n${content
+        .trim()
+        .split("\n")
+        .map((l) => l.trimEnd())
+        .filter((l) => l.trim() !== "")
+        .join("\n\n")}\n\n`,
+  });
   return service;
 }
 
@@ -346,12 +363,38 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "code":
         return `\`${node.textContent ?? ""}\``;
       case "pre": {
-        const code = node.childNodes.find((c) => c.nodeName === "CODE");
-        const lang =
-          code?.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
-        const text = code?.textContent ?? node.textContent ?? "";
-        const fence = pickFence(text, opts.codeFence[0] ?? "`", opts.codeFence.length || 3);
-        return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
+        // Standard block-code pattern: <pre><code class="language-x">…</code></pre>.
+        const first = [...node.childNodes].find(
+          (c) => c.nodeType !== 3 || (c.textContent ?? "").trim() !== ""
+        );
+        if (first?.nodeName === "CODE") {
+          const lang =
+            first.getAttribute("class")?.match(/language-(\S+)/)?.[1] ?? "";
+          const text = first.textContent ?? "";
+          const fence = pickFence(
+            text,
+            opts.codeFence[0] ?? "`",
+            opts.codeFence.length || 3
+          );
+          return `\n${fence}${lang}\n${text.replace(/\n$/, "")}\n${fence}\n\n`;
+        }
+        // Non-code <pre> (e.g. LeetCode example blocks with bold labels):
+        // render children inline, then separate lines with blank lines so
+        // each stays on its own paragraph.
+        let out = "";
+        for (const child of node.childNodes) {
+          if (child.nodeType === 3) {
+            out += escapeText(child.textContent ?? "").replace(/\n+/g, "\n");
+          } else {
+            out += renderNode(child);
+          }
+        }
+        const lines = out
+          .trim()
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l !== "");
+        return `${lines.join("\n\n")}\n\n`;
       }
       case "h1":
       case "h2":
