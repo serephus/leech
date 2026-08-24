@@ -23,6 +23,8 @@ In your solutions repository:
 
 1. Get your cookies: log in to leetcode.com, open DevTools → Network, reload,
    and copy `LEETCODE_SESSION` and `csrftoken` from the `cookie` request header.
+   (On LeetCode China, log in to leetcode.cn and set `site: leetcode.cn` in the
+   config — the GraphQL API, cookie names, and GraphQL schema are the same.)
 2. Add them as repository secrets (`LEETCODE_SESSION`, `LEETCODE_CSRF_TOKEN`).
 3. Add a workflow:
 
@@ -44,7 +46,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: serephus/leech@v7 # release tag (the main branch won't work)
+      - uses: serephus/leech@v8 # release tag (the main branch won't work)
         with:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
@@ -58,6 +60,7 @@ jobs:
           # only accept flatten key-value pairs inputs
           config: |
             destination: "solutions"
+            site: leetcode.com
             assets: null # default; null = no downloads, "" = under destination, path = static root
             filters:
               status: accepted
@@ -123,6 +126,7 @@ repo:                       # optional; default: the repo the action runs in
   name: blog
 branch: deploy              # optional; default: the repo's default branch
 destination: solutions      # default: "solutions"; files are written under this folder
+site: leetcode.com          # default: "leetcode.com"; leetcode.com | leetcode.cn
 assets: null               # default; images are stored under <prefix>/images/<slug>/<file>,
                             #   where prefix is the destination (""), the configured value
                             #   (e.g. "static" → static/images/...), or nothing (null = no downloads)
@@ -325,7 +329,7 @@ fallbacks: `LEECH_CONFIG`, `LEETCODE_SESSION`, `LEETCODE_CSRF_TOKEN`,
 
 ## Dist workflow
 
-The action is referenced by tag (`uses: serephus/leech@v7`), `dist/` is not
+The action is referenced by tag (`uses: serephus/leech@v8`), `dist/` is not
 committed to the repo (gitignored); CI just verifies it builds. The Dist
 workflow bundles it into the tag at release time.
 

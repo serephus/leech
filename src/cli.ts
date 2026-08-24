@@ -109,7 +109,12 @@ async function main(): Promise<void> {
   }
 
   const octokit = new Octokit({ auth: token });
-  const client = new LeetCodeClient(session, csrf, config.client.delayMs);
+  const client = new LeetCodeClient(
+    session,
+    csrf,
+    config.client.delayMs,
+    config.site
+  );
   const summary = await runSync({
     octokit,
     client,

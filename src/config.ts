@@ -114,6 +114,7 @@ export const configSchema = z.object({
     .string()
     .default("solutions")
     .transform(normalizeDestination),
+  site: z.enum(["leetcode.com", "leetcode.cn"]).default("leetcode.com"),
   assets: z
     .string()
     .nullable()

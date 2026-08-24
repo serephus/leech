@@ -1,7 +1,12 @@
 import type { Question, SubmissionDetails, SubmissionListEntry } from "./types";
 
-const BASE_URL = "https://leetcode.com";
-const GRAPHQL_URL = `${BASE_URL}/graphql`;
+const DEFAULT_BASE_URL = "https://leetcode.com";
+
+/**
+ * The LeetCode site to talk to. `leetcode.cn` uses the same GraphQL schema
+ * and cookie names but a different host.
+ */
+export type LeetCodeSite = "leetcode.com" | "leetcode.cn";
 const USER_AGENT = "leech/0.1";
 
 /** A normalized page of submissions (the wire shape lives in ListResponse). */
@@ -102,19 +107,28 @@ export class LeetCodeClient {
   private readonly session: string;
   private readonly csrf: string;
   private readonly delayMs: number;
+  private readonly baseUrl: string;
+  private readonly graphqlUrl: string;
 
-  constructor(session: string, csrf: string, delayMs: number) {
+  constructor(
+    session: string,
+    csrf: string,
+    delayMs: number,
+    site: LeetCodeSite = "leetcode.com"
+  ) {
     this.session = session;
     this.csrf = csrf;
     this.delayMs = delayMs;
+    this.baseUrl = `https://${site}`;
+    this.graphqlUrl = `${this.baseUrl}/graphql`;
   }
 
   private headers(extra?: Record<string, string>): Record<string, string> {
     return {
       cookie: `LEETCODE_SESSION=${this.session}; csrftoken=${this.csrf}`,
       "x-csrftoken": this.csrf,
-      origin: BASE_URL,
-      referer: BASE_URL,
+      origin: this.baseUrl,
+      referer: this.baseUrl,
       "user-agent": USER_AGENT,
       ...extra,
     };
@@ -153,7 +167,7 @@ export class LeetCodeClient {
   /** Fetch one page of submissions (newest first). */
   async listSubmissions(offset: number, limit = 20): Promise<SubmissionPage> {
     await this.throttle();
-    const res = await this.request<ListResponse>(GRAPHQL_URL, {
+    const res = await this.request<ListResponse>(this.graphqlUrl, {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify({
@@ -183,7 +197,7 @@ export class LeetCodeClient {
     submissionId: number
   ): Promise<SubmissionDetails | null> {
     await this.throttle();
-    const res = await this.request<SubmissionDetailsResponse>(GRAPHQL_URL, {
+    const res = await this.request<SubmissionDetailsResponse>(this.graphqlUrl, {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify({
@@ -210,7 +224,7 @@ export class LeetCodeClient {
   /** Fetch problem metadata + HTML description. Returns null for locked (premium) problems. */
   async getQuestion(titleSlug: string): Promise<Question | null> {
     await this.throttle();
-    const res = await this.request<QuestionResponse>(GRAPHQL_URL, {
+    const res = await this.request<QuestionResponse>(this.graphqlUrl, {
       method: "POST",
       headers: this.headers({ "content-type": "application/json" }),
       body: JSON.stringify({

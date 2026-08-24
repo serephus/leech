@@ -120,7 +120,7 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
       continue;
     }
 
-    const context = buildContext(details, question);
+    const context = buildContext(details, question, config.site);
 
     // Plan asset downloads: every absolute http(s) img src in the problem HTML
     // maps to `<prefix>/images/<slug>/<filename>`, where prefix is the
