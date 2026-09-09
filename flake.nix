@@ -66,6 +66,7 @@
         };
 
         devShells.default = pkgs.mkShell {
+          name = "leech";
           packages = with pkgs; [
             nodejs_24
             pnpm
