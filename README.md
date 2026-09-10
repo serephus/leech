@@ -404,9 +404,10 @@ hooks:
       jq -c --arg chat_id "$TELEGRAM_CHAT_ID" '
         {
           chat_id: $chat_id,
-          text: ("Synced \(.submissions | length) solution(s):\n" +
-            ([.submissions[] |
-              "• \(.slug) (\(.lang)) https://leetcode.com/problems/\(.slug)/"] |
+          link_preview_options: { is_disabled: true },
+          text: ("Synced \(.submissions | length) solution(s) across \(([.submissions[].slug] | unique) | length) problem(s):\n" +
+            ([.submissions | group_by(.slug)[] |
+              "• \(.[0].slug) (\([.[].lang] | join(", "))) https://leetcode.com/problems/\(.[0].slug)/"] |
               join("\n")))
         }
       ' <<<"$ctx" \
@@ -421,7 +422,8 @@ hooks:
 `curl` and `jq` are preinstalled on the `ubuntu-latest` runner. When no
 submissions are synced the hook exits early and sends nothing; `curl -f` turns
 a non-2xx Telegram response into a non-zero exit, which is handled by the
-hook's `onError`.
+hook's `onError`. Submissions are grouped by question so each problem URL
+appears once, and `link_preview_options` disables the link preview.
 
 ## Filters
 
