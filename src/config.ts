@@ -105,6 +105,70 @@ export const renderConfigSchema = z
   })
   .default({ ...DEFAULT_RENDER });
 
+const HOOK_ERROR_POLICIES = ["fail", "warn"] as const;
+const SUBMISSION_HOOK_ERROR_POLICIES = ["fail", "warn", "skip"] as const;
+const SUBMISSION_HOOK_PHASES = ["before-commit", "after-commit"] as const;
+
+const DEFAULT_HOOKS = {
+  shell: "bash",
+  timeoutMs: 30000,
+  onError: "fail" as const,
+};
+
+const hookBaseSchema = z.object({
+  run: z.string().min(1),
+  cwd: z.string().optional(),
+  timeoutMs: z.number().int().min(0).optional(),
+  onError: z.enum(HOOK_ERROR_POLICIES).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+});
+
+const submissionHookSchema = hookBaseSchema.extend({
+  when: z.enum(SUBMISSION_HOOK_PHASES).default("before-commit"),
+  onError: z.enum(SUBMISSION_HOOK_ERROR_POLICIES).optional(),
+});
+
+const postHookSchema = hookBaseSchema.extend({
+  commit: z.string().nullable().optional(),
+});
+
+/**
+ * A hook accepts a plain string shorthand (`run`) or an object. The string is
+ * expanded to `{ run }` and piped through the object schema so its defaults
+ * (e.g. `when: before-commit`) still apply.
+ */
+const preHookFieldSchema = z
+  .union([z.string().min(1), hookBaseSchema])
+  .transform((value) =>
+    typeof value === "string" ? { run: value } : value
+  )
+  .pipe(hookBaseSchema);
+
+const submissionHookFieldSchema = z
+  .union([z.string().min(1), submissionHookSchema])
+  .transform((value) =>
+    typeof value === "string" ? { run: value } : value
+  )
+  .pipe(submissionHookSchema);
+
+const postHookFieldSchema = z
+  .union([z.string().min(1), postHookSchema])
+  .transform((value) =>
+    typeof value === "string" ? { run: value } : value
+  )
+  .pipe(postHookSchema);
+
+export const hooksConfigSchema = z
+  .object({
+    shell: z.string().min(1).default(DEFAULT_HOOKS.shell),
+    timeoutMs: z.number().int().min(0).default(DEFAULT_HOOKS.timeoutMs),
+    onError: z.enum(HOOK_ERROR_POLICIES).default(DEFAULT_HOOKS.onError),
+    pre: preHookFieldSchema.optional(),
+    submission: submissionHookFieldSchema.optional(),
+    post: postHookFieldSchema.optional(),
+  })
+  .default({ ...DEFAULT_HOOKS });
+
 export const configSchema = z.object({
   repo: z
     .object({ owner: z.string().min(1), name: z.string().min(1) })
@@ -125,6 +189,7 @@ export const configSchema = z.object({
   commit: commitConfigSchema,
   client: clientConfigSchema,
   render: renderConfigSchema,
+  hooks: hooksConfigSchema,
 });
 
 // Config types are derived from the zod schema so they cannot drift from it.
@@ -133,6 +198,12 @@ export type FilterConfig = z.infer<typeof filterConfigSchema>;
 export type CommitConfig = z.infer<typeof commitConfigSchema>;
 export type ClientConfig = z.infer<typeof clientConfigSchema>;
 export type RenderConfig = z.infer<typeof renderConfigSchema>;
+export type HookConfig = z.infer<typeof hookBaseSchema>;
+export type SubmissionHookConfig = z.infer<typeof submissionHookSchema>;
+export type PostHookConfig = z.infer<typeof postHookSchema>;
+export type HooksConfig = z.infer<typeof hooksConfigSchema>;
+export type HookErrorPolicy = (typeof SUBMISSION_HOOK_ERROR_POLICIES)[number];
+export type SubmissionPhase = (typeof SUBMISSION_HOOK_PHASES)[number];
 export type LeechConfig = z.infer<typeof configSchema>;
 
 export function parseConfig(raw: string): LeechConfig {

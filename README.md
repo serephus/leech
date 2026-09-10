@@ -167,6 +167,17 @@ client:
   delayMs: 250              # default: 250; delay between LeetCode GraphQL calls (ms)
 render:
   throwOnUndefined: false   # default: false; throw on undefined template variables
+hooks:                      # optional; see "Hooks" section
+  shell: bash               # default: "bash"; shell used to run hooks
+  timeoutMs: 30000          # default: 30000; per-hook timeout (0 = no timeout)
+  onError: fail             # default: "fail"; fail | warn (submission also: skip)
+  # pre: "echo starting"    # optional; runs once before syncing
+  # submission:             # optional; runs once per submission
+  #   when: before-commit   #   before-commit | after-commit (default: before-commit)
+  #   run: "npx prettier --write ."
+  # post:                   # optional; runs once before the final push
+  #   run: "node index.mjs"
+  #   commit: "leech: regenerate index"  # null disables the post commit
 ```
 
 ## Templates
@@ -302,6 +313,116 @@ If `files` is omitted, the default markdown layout is used: per problem a
 `README.md` (YAML frontmatter + converted description) and one code file per
 language.
 
+## Hooks
+
+Hooks run user shell commands at three lifecycle points of a sync. Each hook
+command is a Nunjucks template (same filters as file templates); it receives
+the hook context as JSON on stdin and as `LEECH_*` environment variables.
+
+- `pre` — once, after the watermark is known and before the first LeetCode call.
+- `submission` — once per submission; `when: before-commit` (default) runs
+  before the commit is created and may edit/add/delete the files that get
+  committed, `when: after-commit` runs after the commit object is created
+  (observational).
+- `post` — once, after all submissions but before the single ref update; files
+  it writes become an optional post-sync commit in the same push.
+
+A hook is a string (shorthand for `{ run }`) or an object:
+
+```yaml
+hooks:
+  shell: bash            # default
+  timeoutMs: 30000       # default per-hook timeout; 0 = no timeout
+  onError: fail          # default; fail | warn (submission also allows skip)
+
+  pre: "echo starting"
+
+  submission:
+    when: before-commit  # before-commit | after-commit
+    run: |
+      npx prettier --write '{{ question.title_slug }}/{{ submission.lang_ext }}'
+
+  post:
+    run: node .github/generate-index.mjs "$LEECH_HOOK_DIR"
+    commit: "leech: regenerate index"   # null disables the post commit
+```
+
+Per-hook fields: `run` (required), `cwd`, `timeoutMs`, `env` (map), `onError`;
+`submission` also takes `when`; `post` also takes `commit`.
+
+Exit codes: `0` succeeds; a non-zero exit (or timeout) is handled by the
+hook's `onError` (falling back to `hooks.onError`):
+
+- `fail` — abort the sync (nothing is pushed).
+- `warn` — log and continue; any workspace changes are discarded.
+- `skip` — (`submission` only) skip committing this submission.
+
+### Hook context
+
+Hooks read a JSON context from stdin and get `LEECH_*` convenience variables:
+`LEECH_HOOK`, `LEECH_PHASE`, `LEECH_REPO`, `LEECH_BRANCH`,
+`LEECH_DESTINATION`, `LEECH_SITE`, `LEECH_DRY_RUN`, `LEECH_VERBOSE`,
+`LEECH_HOOK_DIR`, and (for `submission`) `LEECH_SUBMISSION_ID`,
+`LEECH_SUBMISSION_TIMESTAMP`, `LEECH_SUBMISSION_LANG`,
+`LEECH_QUESTION_SLUG`, `LEECH_QUESTION_TITLE`, `LEECH_FRONTEND_ID`.
+
+The stdin JSON for `submission` contains the same `submission`/`question`
+objects as file templates, plus `index`, `total`, `files`, and `workspace`.
+`pre` gets `watermark` and `prefix`; `post` gets `summary`, `finalWatermark`,
+`pushed`, and `submissions`. See [docs/hooks.md](docs/hooks.md) for the full
+context schema.
+
+### Workspace (before-commit)
+
+For `submission` with `when: before-commit`, leech materializes the rendered
+files and downloaded assets into a temp directory (`LEECH_HOOK_DIR`), runs the
+hook, then commits whatever is left: the hook may edit files in place, add
+files, or delete files. Unchanged binary files keep their exact bytes.
+
+### Dry-run
+
+Hooks still run in `--dry-run`; no commit or ref update is created. Guard
+irreversible side effects with `LEECH_DRY_RUN`.
+
+Secrets are never passed to hooks: the child environment has `INPUT_*`,
+`GITHUB_TOKEN`/`GH_TOKEN`, the LeetCode cookies, and `ACTIONS_*` tokens
+removed. Pass anything a hook needs explicitly via `env`.
+
+### Example: notify a Telegram bot
+
+A `post` hook receives `submissions` (everything committed this run) as JSON
+on stdin. `jq` aggregates them into a single message and `curl` sends it to
+the bot. Store the token and chat id as repository secrets and pass them
+explicitly via `env`:
+
+```yaml
+hooks:
+  post:
+    run: |
+      ctx="$(cat)"
+      [ "$(jq '.submissions | length' <<<"$ctx")" -gt 0 ] || exit 0
+      jq -c --arg chat_id "$TELEGRAM_CHAT_ID" '
+        {
+          chat_id: $chat_id,
+          text: ("Synced \(.submissions | length) solution(s):\n" +
+            ([.submissions[] |
+              "• \(.slug) (\(.lang)) https://leetcode.com/problems/\(.slug)/"] |
+              join("\n")))
+        }
+      ' <<<"$ctx" \
+        | curl -fsS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "content-type: application/json" \
+            --data-binary @-
+    env:
+      TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+      TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
+```
+
+`curl` and `jq` are preinstalled on the `ubuntu-latest` runner. When no
+submissions are synced the hook exits early and sends nothing; `curl -f` turns
+a non-2xx Telegram response into a non-zero exit, which is handled by the
+hook's `onError`.
+
 ## Filters
 
 - `status: accepted` keeps only submissions whose status display is `Accepted`.
@@ -356,11 +477,12 @@ changes, `nix build` reports the new dependency hash to paste into
 2. Apply filters.
 3. For each remaining submission (oldest first): fetch full details
    (code, runtime, memory, percentiles) and the problem description via
-   LeetCode's GraphQL API, render the configured files, and create **one git
-   commit per submission** with `author.date = submission timestamp`.
-4. Push the branch ref once at the end of the sync — all commits land in a
-   single ref update, so a run is atomic (either every submission lands or
-   none does).
+   LeetCode's GraphQL API, render the configured files, run any `submission`
+   hook, and create **one git commit per submission** with
+   `author.date = submission timestamp`.
+4. Run any `post` hook and push the branch ref once at the end of the sync —
+   all commits (including an optional post-sync commit) land in a single ref
+   update, so a run is atomic (either every submission lands or none does).
 
 ## Watermark
 
@@ -384,7 +506,7 @@ in the filename, e.g. `{{ submission.id }}/...`.
 
 ## Roadmap
 
-- Hooks (pre/post sync, per-submission).
+- Hooks (pre/post sync, per-submission) — implemented, see [Hooks](#hooks).
 
 ## Notes and caveats
 

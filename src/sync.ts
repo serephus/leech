@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { Octokit } from "@octokit/rest";
 import { applyFilters } from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
@@ -16,8 +19,28 @@ import {
   renderFilename,
   renderTemplate,
 } from "./render";
+import type { TemplateContext } from "./render";
 import { scanWatermark } from "./state";
-import type { LeechConfig, Question, SubmissionListEntry, SyncSummary } from "./types";
+import {
+  buildRepoContext,
+  collectWorkspace,
+  hookEnv,
+  hookEnvVars,
+  materializeWorkspace,
+  postHookContext,
+  preHookContext,
+  resolveOnError,
+  runHook,
+  submissionHookContext,
+} from "./hooks";
+import type { ResolvedHook } from "./hooks";
+import type {
+  HookErrorPolicy,
+  LeechConfig,
+  Question,
+  SubmissionListEntry,
+  SyncSummary,
+} from "./types";
 
 export interface RunOptions {
   octokit: Octokit;
@@ -65,6 +88,45 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     `watermark: ${watermark} (${new Date(watermark * 1000).toISOString()})`
   );
 
+  const hooks = config.hooks;
+  const repoContext = buildRepoContext({
+    owner,
+    repo,
+    branch,
+    destination: config.destination,
+    site: config.site,
+    dryRun,
+    verbose,
+  });
+
+  // Pre-sync hook: once, after the watermark is known and before any LeetCode
+  // call. Aborts the run on `fail`.
+  await runHookPoint(
+    "pre",
+    hooks.pre,
+    preHookContext(repoContext, watermark, config.commit.prefix),
+    {
+      shell: hooks.shell,
+      name: "pre",
+      verbose,
+      defaultTimeoutMs: hooks.timeoutMs,
+      globalOnError: hooks.onError,
+      allowSkip: false,
+      baseEnv: hookEnv(
+        process.env,
+        hookEnvVars({
+          hook: "pre",
+          repo: `${owner}/${repo}`,
+          branch,
+          destination: config.destination,
+          site: config.site,
+          dryRun,
+          verbose,
+        })
+      ),
+    }
+  );
+
   // Collect submissions newer than the watermark (API returns newest first).
   const candidates: SubmissionListEntry[] = [];
   let offset = 0;
@@ -95,9 +157,19 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   );
 
   const questionCache = new Map<string, Question | null>();
+  const submissionHook = hooks.submission;
+  const submissionPhase = submissionHook?.when ?? "before-commit";
+  const processed: Array<{
+    id: number;
+    slug: string;
+    lang: string;
+    timestamp: number;
+    files: string[];
+  }> = [];
   let synced = 0;
+  let finalWatermark = watermark;
 
-  for (const entry of ordered) {
+  for (const [index, entry] of ordered.entries()) {
     const details = await client.getSubmissionDetails(entry.id);
     if (!details) {
       if (verbose) log(`skip submission ${entry.id}: no details`);
@@ -161,7 +233,8 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
       (a) => (assetBytes.get(a.url)?.length ?? 0) > 0
     );
 
-    const assetsPrefix = config.assets === "" ? config.destination : (config.assets ?? "");
+    const assetsPrefix =
+      config.assets === "" ? config.destination : (config.assets ?? "");
     const assetFiles: CommitFile[] = okAssets.map((a) => ({
       path: `${assetsPrefix}/images/${question.titleSlug}/${a.filename}`,
       content: assetBytes.get(a.url)!,
@@ -201,33 +274,187 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
       context
     )}`.trim();
 
-    if (dryRun) {
-      log(
-        `[dry-run] would commit "${message}" with ${
-          files.length + assetFiles.length
-        } file(s)`
-      );
-      for (const f of [...files, ...assetFiles]) {
-        if (verbose) log(`  ${f.path}`);
+    const allFiles: CommitFile[] = [...files, ...assetFiles];
+    const assetPaths = new Set(assetFiles.map((f) => f.path));
+    let commitFiles = allFiles;
+
+    // Per-submission hook, phase before-commit: materialize the rendered files
+    // into a temp workspace, let the hook reshape it, then commit the result.
+    if (submissionHook && submissionPhase === "before-commit") {
+      const dir = await makeTempWorkspace();
+      try {
+        await materializeWorkspace(dir, allFiles);
+        const hookCtx = submissionHookContext(
+          repoContext,
+          "before-commit",
+          index,
+          ordered.length,
+          fileContext,
+          allFiles.map((f) => ({
+            path: f.path,
+            asset: assetPaths.has(f.path),
+          })),
+          dir
+        );
+        const outcome = await runHookPoint("submission", submissionHook, hookCtx, {
+          shell: hooks.shell,
+          name: "submission",
+          verbose,
+          defaultTimeoutMs: hooks.timeoutMs,
+          globalOnError: hooks.onError,
+          allowSkip: true,
+          baseEnv: submissionEnv({
+            owner,
+            repo,
+            branch,
+            config,
+            phase: "before-commit",
+            dryRun,
+            verbose,
+            workspace: dir,
+            context: fileContext,
+          }),
+        });
+        if (outcome === "skip") {
+          log(`skip submission ${entry.id}: hook skipped`);
+          continue;
+        }
+        commitFiles =
+          outcome === "ok"
+            ? await collectWorkspace(dir, allFiles)
+            : allFiles;
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
       }
-      synced++;
-      continue;
     }
 
-    await committer.commitSubmission(
-      [...files, ...assetFiles],
-      message,
-      details.timestamp
-    );
-    if (verbose) {
+    if (dryRun) {
       log(
-        `committed "${message}" (${
-          files.length + assetFiles.length
-        } file(s))`
+        `[dry-run] would commit "${message}" with ${commitFiles.length} file(s)`
       );
-      for (const f of [...files, ...assetFiles]) log(`  ${f.path}`);
+      for (const f of commitFiles) {
+        if (verbose) log(`  ${f.path}`);
+      }
+    } else {
+      await committer.commitSubmission(commitFiles, message, details.timestamp);
     }
+
+    // Per-submission hook, phase after-commit: observational, runs in both
+    // live and dry-run modes.
+    if (submissionHook && submissionPhase === "after-commit") {
+      const hookCtx = submissionHookContext(
+        repoContext,
+        "after-commit",
+        index,
+        ordered.length,
+        fileContext,
+        commitFiles.map((f) => ({
+          path: f.path,
+          asset: assetPaths.has(f.path),
+        })),
+        ""
+      );
+      await runHookPoint("submission", submissionHook, hookCtx, {
+        shell: hooks.shell,
+        name: "submission",
+        verbose,
+        defaultTimeoutMs: hooks.timeoutMs,
+        globalOnError: hooks.onError,
+        allowSkip: false,
+        baseEnv: submissionEnv({
+          owner,
+          repo,
+          branch,
+          config,
+          phase: "after-commit",
+          dryRun,
+          verbose,
+          workspace: "",
+          context: fileContext,
+        }),
+      });
+    }
+
+    if (!dryRun && verbose) {
+      log(`committed "${message}" (${commitFiles.length} file(s))`);
+      for (const f of commitFiles) log(`  ${f.path}`);
+    }
+
     synced++;
+    finalWatermark = Math.max(finalWatermark, details.timestamp);
+    processed.push({
+      id: entry.id,
+      slug: entry.titleSlug,
+      lang: details.lang,
+      timestamp: details.timestamp,
+      files: commitFiles.map((f) => f.path),
+    });
+  }
+
+  // Post-sync hook: runs before the single ref update. Files it writes become
+  // an optional post-sync commit in the same push.
+  let postFiles: CommitFile[] = [];
+  let postMessage = "";
+  const postHook = hooks.post;
+  if (postHook) {
+    const dir = await makeTempWorkspace();
+    try {
+      const hookCtx = postHookContext(
+        repoContext,
+        { scanned: candidates.length, skippedFiltered, synced, watermark },
+        finalWatermark,
+        synced,
+        processed
+      );
+      const outcome = await runHookPoint("post", postHook, hookCtx, {
+        shell: hooks.shell,
+        name: "post",
+        verbose,
+        defaultTimeoutMs: hooks.timeoutMs,
+        globalOnError: hooks.onError,
+        allowSkip: false,
+        baseEnv: hookEnv(
+          process.env,
+          hookEnvVars({
+            hook: "post",
+            repo: `${owner}/${repo}`,
+            branch,
+            destination: config.destination,
+            site: config.site,
+            dryRun,
+            verbose,
+            workspace: dir,
+          })
+        ),
+      });
+      if (outcome === "ok") {
+        const collected = await collectWorkspace(dir, []);
+        if (collected.length > 0) {
+          if (postHook.commit === null) {
+            log(
+              `warning: post hook produced ${collected.length} file(s) but commit is disabled; ignoring`
+            );
+          } else {
+            postFiles = collected;
+            postMessage = renderTemplate(
+              postHook.commit ?? `${config.commit.prefix} post-sync`,
+              hookCtx
+            ).trim();
+          }
+        }
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  if (!dryRun && postFiles.length > 0) {
+    await committer.commitPostSync(postFiles, postMessage);
+    log(`committed post-sync "${postMessage}" (${postFiles.length} file(s))`);
+  } else if (dryRun && postFiles.length > 0) {
+    log(
+      `[dry-run] would create post-sync commit "${postMessage}" with ${postFiles.length} file(s)`
+    );
   }
 
   // Push all commits of this sync in one ref update (per-sync, not per-submission).
@@ -240,6 +467,84 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     `done: synced=${synced}, filtered=${skippedFiltered}, watermark=${watermark}`
   );
   return { scanned: candidates.length, skippedFiltered, synced, watermark };
+}
+
+function submissionEnv(o: {
+  owner: string;
+  repo: string;
+  branch: string;
+  config: LeechConfig;
+  phase: "before-commit" | "after-commit";
+  dryRun: boolean;
+  verbose: boolean;
+  workspace: string;
+  context: TemplateContext;
+}): NodeJS.ProcessEnv {
+  return hookEnv(
+    process.env,
+    hookEnvVars({
+      hook: "submission",
+      phase: o.phase,
+      repo: `${o.owner}/${o.repo}`,
+      branch: o.branch,
+      destination: o.config.destination,
+      site: o.config.site,
+      dryRun: o.dryRun,
+      verbose: o.verbose,
+      workspace: o.workspace,
+      submission: {
+        id: o.context.submission.id,
+        timestamp: o.context.submission.timestamp,
+        lang: o.context.submission.lang,
+      },
+      question: {
+        titleSlug: o.context.question.title_slug,
+        title: o.context.question.title,
+        frontendId: o.context.question.frontend_id,
+      },
+    })
+  );
+}
+
+async function makeTempWorkspace(): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), "leech-hook-"));
+}
+
+async function runHookPoint(
+  point: "pre" | "submission" | "post",
+  hook: ResolvedHook | undefined,
+  context: object,
+  o: {
+    shell: string;
+    name: string;
+    verbose: boolean;
+    defaultTimeoutMs: number;
+    globalOnError: HookErrorPolicy;
+    allowSkip: boolean;
+    baseEnv: NodeJS.ProcessEnv;
+  }
+): Promise<"ok" | "warn" | "skip"> {
+  if (!hook) return "ok";
+  const result = await runHook(hook, context, {
+    shell: o.shell,
+    name: o.name,
+    verbose: o.verbose,
+    defaultTimeoutMs: o.defaultTimeoutMs,
+    baseEnv: o.baseEnv,
+  });
+  if (result.ok) return "ok";
+  const policy = resolveOnError(hook.onError, o.globalOnError, o.allowSkip);
+  if (policy === "skip") {
+    log(`hook "${o.name}" requested skip (${result.error ?? "non-zero exit"})`);
+    return "skip";
+  }
+  if (policy === "warn") {
+    log(
+      `warning: hook "${o.name}" failed (${result.error ?? "non-zero exit"}); continuing`
+    );
+    return "warn";
+  }
+  throw new Error(`hook "${o.name}" failed: ${result.error ?? "non-zero exit"}`);
 }
 
 function log(message: string): void {
