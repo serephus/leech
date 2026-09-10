@@ -43,6 +43,12 @@ export type {
   CommitConfig,
   ClientConfig,
   RenderConfig,
+  HookConfig,
+  SubmissionHookConfig,
+  PostHookConfig,
+  HooksConfig,
+  HookErrorPolicy,
+  SubmissionPhase,
   LeechConfig,
 } from "./config";
 

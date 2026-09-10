@@ -101,3 +101,84 @@ describe("parseBound", () => {
     expect(() => parseBound("not-a-date")).toThrow();
   });
 });
+
+describe("parseConfig hooks", () => {
+  it("applies hook defaults and disables hooks when omitted", () => {
+    const cfg = parseConfig("files:\n  - filename: a.md\n    content: x");
+    expect(cfg.hooks.shell).toBe("bash");
+    expect(cfg.hooks.timeoutMs).toBe(30000);
+    expect(cfg.hooks.onError).toBe("fail");
+    expect(cfg.hooks.pre).toBeUndefined();
+    expect(cfg.hooks.submission).toBeUndefined();
+    expect(cfg.hooks.post).toBeUndefined();
+  });
+
+  it("expands the string shorthand", () => {
+    const cfg = parseConfig(`hooks:
+  pre: echo hi
+  submission: npx prettier --write .
+  post: node index.mjs
+files:
+  - filename: x.md
+    content: x`);
+    expect(cfg.hooks.pre).toEqual({ run: "echo hi" });
+    expect(cfg.hooks.submission).toEqual({
+      run: "npx prettier --write .",
+      when: "before-commit",
+    });
+    expect(cfg.hooks.post).toEqual({ run: "node index.mjs" });
+  });
+
+  it("parses full hook objects", () => {
+    const cfg = parseConfig(`hooks:
+  shell: /bin/sh
+  timeoutMs: 1000
+  onError: warn
+  pre:
+    run: echo hi
+    cwd: /tmp
+    timeoutMs: 500
+    onError: warn
+    env:
+      FOO: bar
+  submission:
+    when: after-commit
+    run: echo after
+    onError: skip
+  post:
+    run: node index.mjs
+    commit: null
+files:
+  - filename: x.md
+    content: x`);
+    expect(cfg.hooks.shell).toBe("/bin/sh");
+    expect(cfg.hooks.timeoutMs).toBe(1000);
+    expect(cfg.hooks.onError).toBe("warn");
+    expect(cfg.hooks.pre).toMatchObject({
+      run: "echo hi",
+      cwd: "/tmp",
+      timeoutMs: 500,
+      onError: "warn",
+      env: { FOO: "bar" },
+    });
+    expect(cfg.hooks.submission).toMatchObject({
+      when: "after-commit",
+      run: "echo after",
+      onError: "skip",
+    });
+    expect(cfg.hooks.post).toMatchObject({
+      run: "node index.mjs",
+      commit: null,
+    });
+  });
+
+  it("rejects invalid hooks", () => {
+    expect(() =>
+      parseConfig("hooks:\n  submission:\n    when: bogus")
+    ).toThrow(/invalid config/);
+    // `skip` is only valid for the submission hook.
+    expect(() =>
+      parseConfig("hooks:\n  pre:\n    run: echo hi\n    onError: skip")
+    ).toThrow(/invalid config/);
+  });
+});
