@@ -5,6 +5,10 @@ describe("parseConfig", () => {
   it("applies defaults", () => {
     const cfg = parseConfig("files:\n  - filename: a.md\n    content: x");
     expect(cfg.filters.status).toBe("accepted");
+    expect(cfg.filters.difficulty).toEqual([]);
+    expect(cfg.filters.excludeDifficulty).toEqual([]);
+    expect(cfg.filters.tags).toEqual([]);
+    expect(cfg.filters.excludeTags).toEqual([]);
     expect(cfg.commit.prefix).toBe("leech:");
     expect(cfg.commit.message).toContain("{{ question.title }}");
     expect(cfg.destination).toBe("solutions");
@@ -45,6 +49,10 @@ describe("parseConfig", () => {
   status: all
   languages: [python3]
   excludeProblems: [two-sum]
+  difficulty: [Easy, Hard]
+  excludeDifficulty: [Medium]
+  tags: [Array, "Dynamic Programming"]
+  excludeTags: [Math]
   since: "2024-01-01"
 files:
   - filename: x.md
@@ -52,7 +60,19 @@ files:
     expect(cfg.filters.status).toBe("all");
     expect(cfg.filters.languages).toEqual(["python3"]);
     expect(cfg.filters.excludeProblems).toEqual(["two-sum"]);
+    expect(cfg.filters.difficulty).toEqual(["Easy", "Hard"]);
+    expect(cfg.filters.excludeDifficulty).toEqual(["Medium"]);
+    expect(cfg.filters.tags).toEqual(["Array", "Dynamic Programming"]);
+    expect(cfg.filters.excludeTags).toEqual(["Math"]);
     expect(cfg.filters.since).toBe(Date.parse("2024-01-01") / 1000);
+  });
+
+  it("rejects an unknown difficulty", () => {
+    expect(() =>
+      parseConfig(
+        "filters:\n  difficulty: [Impossible]\nfiles:\n  - filename: x.md\n    content: x"
+      )
+    ).toThrow(/invalid config/);
   });
 
   it("parses render options", () => {

@@ -2,7 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Octokit } from "@octokit/rest";
-import { applyFilters } from "./filters";
+import {
+  applyFilters,
+  applyQuestionFilters,
+  needsQuestionMetadata,
+} from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
 import type { CommitFile } from "./git";
 import { LeetCodeClient } from "./leetcode";
@@ -147,7 +151,27 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   }
   log(`submissions newer than watermark: ${candidates.length}`);
 
-  const filtered = applyFilters(candidates, config.filters);
+  const questionCache = new Map<string, Question | null>();
+  let filtered = applyFilters(candidates, config.filters);
+
+  // Difficulty/tag filters need problem metadata, which the submission list
+  // doesn't carry. Resolve each surviving problem once (the cache also serves
+  // the main loop below) and drop the ones that don't match.
+  if (needsQuestionMetadata(config.filters)) {
+    const slugs = [...new Set(filtered.map((e) => e.titleSlug))];
+    log(`resolving ${slugs.length} question(s) for difficulty/tag filters`);
+    for (const slug of slugs) {
+      if (!questionCache.has(slug)) {
+        questionCache.set(slug, await client.getQuestion(slug));
+      }
+    }
+    filtered = applyQuestionFilters(
+      filtered,
+      (slug) => questionCache.get(slug) ?? null,
+      config.filters
+    );
+  }
+
   const skippedFiltered = candidates.length - filtered.length;
   log(`after filters: ${filtered.length} (skipped ${skippedFiltered})`);
 
@@ -155,8 +179,6 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   const ordered = [...filtered].sort(
     (a, b) => a.timestamp - b.timestamp || a.id - b.id
   );
-
-  const questionCache = new Map<string, Question | null>();
   const submissionHook = hooks.submission;
   const submissionPhase = submissionHook?.when ?? "before-commit";
   const processed: Array<{

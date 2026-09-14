@@ -15,7 +15,8 @@ A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.
   into `<prefix>/images/<slug>/` and referenced with repo-root-absolute paths
   in the markdown/typst output, so the repo stays self-contained
   (see [Assets](#assets)).
-- **Submission filtering** — status, language, problem, and time-window filters.
+- **Submission filtering** — status, language, problem, difficulty/tag, and
+  time-window filters.
 
 ## Quickstart
 
@@ -136,6 +137,10 @@ filters:
   excludeLanguages: []      # default: []; skip these languages
   problems: [two-sum]       # default: []; only these problem slugs
   excludeProblems: []       # default: []; skip these problem slugs
+  difficulty: [Easy]        # default: []; only these difficulties (Easy | Medium | Hard)
+  excludeDifficulty: [Hard] # default: []; skip these difficulties
+  tags: [Array]             # default: []; problems with any of these tags
+  excludeTags: [Math]       # default: []; problems with any of these tags
   since: "2024-01-01"       # default: null; lower bound (date, ISO string, or unix seconds)
   until: null               # default: null; upper bound
 files:                      # optional; default: the markdown layout below
@@ -430,6 +435,14 @@ appears once, and `link_preview_options` disables the link preview.
 - `status: accepted` keeps only submissions whose status display is `Accepted`.
 - Language and problem filters are exact matches against LeetCode ids
   (`python3`, `two-sum`, …).
+- `difficulty`/`excludeDifficulty` match the problem's difficulty
+  (`Easy`, `Medium`, `Hard`).
+- `tags`/`excludeTags` match LeetCode topic tags by exact name (`Array`,
+  `Dynamic Programming`, …). `tags` keeps a problem that has **any** of the
+  listed tags; `excludeTags` drops a problem that has any of them.
+- Difficulty and tag filters need the problem's metadata, so leech fetches each
+  candidate problem once before syncing. Problems whose metadata is unavailable
+  (e.g. locked/premium) are dropped when a question filter is active.
 - `since`/`until` accept unix seconds, a numeric string, or an ISO date
   (`2024-01-01`, `2024-01-01T12:00:00Z`).
 
