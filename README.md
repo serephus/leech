@@ -165,7 +165,7 @@ files:                      # optional; default: the markdown layout below
     content: "{{ submission.code }}"
 commit:
   prefix: "leech: "          # default: "leech: "; message prefix; sync-commit marker
-  message: "{{ question.title }} ({{ submission.lang }})"  # default
+  message: "Sync {{ question.title }} ({{ submission.lang }})"  # default
   authorName: leech-bot      # default: "leech-bot"
   authorEmail: leech-bot@users.noreply.github.com  # default
 client:

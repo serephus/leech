@@ -57,10 +57,11 @@ export function rewriteAssetUrls(
  * If the storage path does not start with the value, the whole path is used.
  */
 export function assetReference(assets: string, storagePath: string): string {
-  if (!assets) return `/${storagePath}`;
-  return assets && storagePath.startsWith(`${assets}/`)
-    ? `/${storagePath.slice(assets.length + 1)}`
-    : `/${storagePath}`;
+  const prefix = assets ? `${assets}/` : "";
+  const relative = storagePath.startsWith(prefix)
+    ? storagePath.slice(prefix.length)
+    : storagePath;
+  return `/${relative}`;
 }
 
 /** Downloads an asset into a Buffer; throws on a non-OK response. */

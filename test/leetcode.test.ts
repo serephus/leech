@@ -18,6 +18,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Stubs fetch with a sequence of canned responses (repeats the last one). */
+function mockFetchSequence(
+  responses: Array<{ status?: number; body?: unknown; throws?: boolean }>
+): ReturnType<typeof vi.fn> {
+  let call = 0;
+  const mock = vi.fn(async () => {
+    const response = responses[Math.min(call++, responses.length - 1)]!;
+    if (response.throws) throw new Error("net down");
+    const status = response.status ?? 200;
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      statusText: String(status),
+      json: async () => response.body,
+    };
+  });
+  vi.stubGlobal("fetch", mock);
+  return mock;
+}
+
 describe("LeetCodeClient.listSubmissions", () => {
   it("throws when the session cookie is invalid (null hasNext/submissions)", async () => {
     mockFetch({ data: { submissionList: { hasNext: null, submissions: null } } });
@@ -80,5 +100,55 @@ describe("LeetCodeClient.listSubmissions", () => {
     const client = new LeetCodeClient("session", "csrf", 0, "leetcode.cn");
     await client.listSubmissions(0);
     expect(calledUrl).toBe("https://leetcode.cn/graphql");
+  });
+});
+
+describe("LeetCodeClient request retries", () => {
+  const okPage = (status = 200) => ({
+    status,
+    body: { data: { submissionList: { hasNext: false, submissions: [] } } },
+  });
+
+  it("retries transient 5xx responses", async () => {
+    const mock = mockFetchSequence([{ status: 503 }, okPage()]);
+    const client = new LeetCodeClient("s", "c", 0, "leetcode.com", 0);
+    await expect(client.listSubmissions(0)).resolves.toEqual({
+      hasMore: false,
+      submissions: [],
+    });
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries network errors", async () => {
+    const mock = mockFetchSequence([{ throws: true }, okPage()]);
+    const client = new LeetCodeClient("s", "c", 0, "leetcode.com", 0);
+    await expect(client.listSubmissions(0)).resolves.toEqual({
+      hasMore: false,
+      submissions: [],
+    });
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the maximum number of attempts", async () => {
+    const mock = mockFetchSequence([{ status: 500 }]);
+    const client = new LeetCodeClient("s", "c", 0, "leetcode.com", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(/HTTP 500/);
+    expect(mock).toHaveBeenCalledTimes(3);
+  });
+
+  it("reports malformed JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        status: 200,
+        ok: true,
+        statusText: "OK",
+        json: async () => {
+          throw new Error("bad json");
+        },
+      }))
+    );
+    const client = new LeetCodeClient("s", "c", 0, "leetcode.com", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(/malformed JSON/);
   });
 });

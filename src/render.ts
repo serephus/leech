@@ -123,7 +123,10 @@ export function datefmt(value: number | string | Date, fmt = "YYYY-MM-DD"): stri
     d = new Date(value * 1000);
   } else {
     const n = Number(value);
-    d = n > 0 && value.trim() !== "" ? new Date(n * 1000) : new Date(Date.parse(value));
+    d =
+      value.trim() !== "" && !Number.isNaN(n)
+        ? new Date(n * 1000)
+        : new Date(Date.parse(value));
   }
   if (Number.isNaN(d.getTime())) return "";
   return fmt.replace(/YYYY|MM|DD|HH|mm|ss/g, (tok) => {
@@ -192,7 +195,19 @@ export const MARKDOWN_DEFAULTS = {
   strongDelimiter: "**",
 } as const;
 
-const turndownCache = new Map<string, TurndownService>();
+/** Memoizes a converter factory by the JSON encoding of its options object. */
+function memoizeOptions<O, T>(create: (options: O) => T): (options: O) => T {
+  const cache = new Map<string, T>();
+  return (options: O) => {
+    const key = JSON.stringify(options);
+    let value = cache.get(key);
+    if (value === undefined) {
+      value = create(options);
+      cache.set(key, value);
+    }
+    return value;
+  };
+}
 
 function createTurndown(options: MarkdownOptions): TurndownService {
   const service = new TurndownService({ ...MARKDOWN_DEFAULTS, ...options });
@@ -249,15 +264,7 @@ function createTurndown(options: MarkdownOptions): TurndownService {
   return service;
 }
 
-function getTurndown(options: MarkdownOptions): TurndownService {
-  const key = JSON.stringify(options);
-  let service = turndownCache.get(key);
-  if (!service) {
-    service = createTurndown(options);
-    turndownCache.set(key, service);
-  }
-  return service;
-}
+const getTurndown = memoizeOptions(createTurndown);
 
 function convertMarkdown(html: string, options: MarkdownOptions): string {
   if (!html.trim()) return "";
@@ -477,13 +484,15 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
   };
 }
 
+const getTypstConverter = memoizeOptions(makeTypstConverter);
+
 /**
  * Creates a Typst conversion filter. The returned filter also accepts
  * per-call options that override the factory options.
  */
 export function makeToTypst(options?: TypstOptions): TypstFilter {
   return (html, callOptions) =>
-    makeTypstConverter({ ...options, ...callOptions })(html);
+    getTypstConverter({ ...options, ...callOptions })(html);
 }
 
 /** Default Typst filter. */

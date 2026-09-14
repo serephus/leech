@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { renderTemplate } from "./render";
 import type { TemplateContext } from "./render";
 import type { CommitFile } from "./git";
 import type { HookErrorPolicy, SubmissionPhase } from "./config";
 import type { SyncSummary } from "./types";
+import { log } from "./log";
 
 /* ------------------------------------------------------------------ */
 /* Environment                                                         */
@@ -256,6 +258,21 @@ export async function collectWorkspace(
   return collected;
 }
 
+/**
+ * Creates a private temp directory, runs `fn`, and always removes the
+ * directory afterwards (even when `fn` throws).
+ */
+export async function withTempWorkspace<T>(
+  fn: (dir: string) => Promise<T>
+): Promise<T> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "leech-hook-"));
+  try {
+    return await fn(dir);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Runner                                                              */
 /* ------------------------------------------------------------------ */
@@ -402,4 +419,60 @@ export function resolveOnError(
   const policy = hookOnError ?? globalOnError;
   if (policy === "skip" && !allowSkip) return "warn";
   return policy;
+}
+
+/** Configuration shared by every hook in a run. */
+export interface HookRunnerOptions {
+  shell: string;
+  timeoutMs: number;
+  onError: HookErrorPolicy;
+  verbose: boolean;
+}
+
+/**
+ * Runs hooks and applies their error policy. Centralizes what was previously
+ * repeated at each call site (pre / submission / post).
+ */
+export class HookRunner {
+  constructor(private readonly options: HookRunnerOptions) {}
+
+  /**
+   * Runs `hook` (a no-op when undefined) and returns the applied policy.
+   * `allowSkip` enables the `skip` policy — only meaningful for the
+   * per-submission before-commit hook. A `fail` policy throws.
+   */
+  async run(
+    name: string,
+    hook: ResolvedHook | undefined,
+    context: object,
+    baseEnv: NodeJS.ProcessEnv,
+    opts: { allowSkip?: boolean } = {}
+  ): Promise<"ok" | "warn" | "skip"> {
+    if (!hook) return "ok";
+
+    const result = await runHook(hook, context, {
+      shell: this.options.shell,
+      name,
+      verbose: this.options.verbose,
+      defaultTimeoutMs: this.options.timeoutMs,
+      baseEnv,
+    });
+    if (result.ok) return "ok";
+
+    const reason = result.error ?? "non-zero exit";
+    const policy = resolveOnError(
+      hook.onError,
+      this.options.onError,
+      opts.allowSkip ?? false
+    );
+    if (policy === "skip") {
+      log(`hook "${name}" requested skip (${reason})`);
+      return "skip";
+    }
+    if (policy === "warn") {
+      log(`warning: hook "${name}" failed (${reason}); continuing`);
+      return "warn";
+    }
+    throw new Error(`hook "${name}" failed: ${reason}`);
+  }
 }
