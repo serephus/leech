@@ -3,12 +3,19 @@ import { z } from "zod";
 
 export const DEFAULT_COMMIT_PREFIX = "leech:";
 
+const DIFFICULTIES = ["Easy", "Medium", "Hard"] as const;
+type Difficulty = (typeof DIFFICULTIES)[number];
+
 const DEFAULT_FILTERS = {
   status: "accepted" as const,
   languages: [] as string[],
   excludeLanguages: [] as string[],
   problems: [] as string[],
   excludeProblems: [] as string[],
+  difficulty: [] as Difficulty[],
+  excludeDifficulty: [] as Difficulty[],
+  tags: [] as string[],
+  excludeTags: [] as string[],
 };
 
 const DEFAULT_COMMIT = {
@@ -66,6 +73,14 @@ export const filterConfigSchema = z
     excludeProblems: z
       .array(z.string())
       .default(DEFAULT_FILTERS.excludeProblems),
+    difficulty: z
+      .array(z.enum(DIFFICULTIES))
+      .default(DEFAULT_FILTERS.difficulty),
+    excludeDifficulty: z
+      .array(z.enum(DIFFICULTIES))
+      .default(DEFAULT_FILTERS.excludeDifficulty),
+    tags: z.array(z.string()).default(DEFAULT_FILTERS.tags),
+    excludeTags: z.array(z.string()).default(DEFAULT_FILTERS.excludeTags),
     since: z
       .union([z.number(), z.string()])
       .transform(parseBound)
