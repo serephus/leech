@@ -1,6 +1,9 @@
 import type { Question, SubmissionDetails, SubmissionListEntry } from "./types";
 
-const DEFAULT_BASE_URL = "https://leetcode.com";
+/** Total request attempts (1 initial + retries) for transient failures. */
+const MAX_ATTEMPTS = 3;
+/** Default base backoff between attempts; the n-th retry waits n * this. */
+const RETRY_BASE_MS = 1000;
 
 /**
  * The LeetCode site to talk to. `leetcode.cn` uses the same GraphQL schema
@@ -107,6 +110,7 @@ export class LeetCodeClient {
   private readonly session: string;
   private readonly csrf: string;
   private readonly delayMs: number;
+  private readonly retryBaseMs: number;
   private readonly baseUrl: string;
   private readonly graphqlUrl: string;
 
@@ -114,11 +118,13 @@ export class LeetCodeClient {
     session: string,
     csrf: string,
     delayMs: number,
-    site: LeetCodeSite = "leetcode.com"
+    site: LeetCodeSite = "leetcode.com",
+    retryBaseMs = RETRY_BASE_MS
   ) {
     this.session = session;
     this.csrf = csrf;
     this.delayMs = delayMs;
+    this.retryBaseMs = retryBaseMs;
     this.baseUrl = `https://${site}`;
     this.graphqlUrl = `${this.baseUrl}/graphql`;
   }
@@ -135,16 +141,28 @@ export class LeetCodeClient {
   }
 
   private async request<T>(url: string, init?: RequestInit): Promise<T> {
-    for (let attempt = 0; ; attempt++) {
-      const res = await fetch(url, init);
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (attempt > 0) await this.sleep(this.retryBaseMs * attempt);
+
+      let res: Response;
+      try {
+        res = await fetch(url, init);
+      } catch (err) {
+        lastError = new Error(`network error: ${(err as Error).message}`);
+        continue;
+      }
+
       if (res.status === 401 || res.status === 403) {
         throw new Error(
           "LeetCode rejected the session cookie (HTTP 401/403). The cookies " +
             "have likely expired — refresh LEETCODE_SESSION and csrftoken from your browser."
         );
       }
-      if ((res.status === 429 || res.status >= 500) && attempt < 2) {
-        await this.sleep(1000 * (attempt + 1));
+      if (res.status === 429 || res.status >= 500) {
+        lastError = new Error(
+          `LeetCode request failed: HTTP ${res.status} ${res.statusText} (${url})`
+        );
         continue;
       }
       if (!res.ok) {
@@ -152,8 +170,15 @@ export class LeetCodeClient {
           `LeetCode request failed: HTTP ${res.status} ${res.statusText} (${url})`
         );
       }
-      return (await res.json()) as T;
+      try {
+        return (await res.json()) as T;
+      } catch {
+        throw new Error(
+          `LeetCode returned malformed JSON (HTTP ${res.status}) (${url})`
+        );
+      }
     }
+    throw lastError ?? new Error(`LeetCode request failed (${url})`);
   }
 
   private async sleep(ms: number): Promise<void> {

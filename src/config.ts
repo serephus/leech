@@ -149,29 +149,19 @@ const postHookSchema = hookBaseSchema.extend({
 
 /**
  * A hook accepts a plain string shorthand (`run`) or an object. The string is
- * expanded to `{ run }` and piped through the object schema so its defaults
+ * expanded to `{ run }` before validation so the object schema's defaults
  * (e.g. `when: before-commit`) still apply.
  */
-const preHookFieldSchema = z
-  .union([z.string().min(1), hookBaseSchema])
-  .transform((value) =>
-    typeof value === "string" ? { run: value } : value
-  )
-  .pipe(hookBaseSchema);
+function hookField<S extends z.ZodType>(schema: S) {
+  return z.preprocess(
+    (value) => (typeof value === "string" ? { run: value } : value),
+    schema
+  );
+}
 
-const submissionHookFieldSchema = z
-  .union([z.string().min(1), submissionHookSchema])
-  .transform((value) =>
-    typeof value === "string" ? { run: value } : value
-  )
-  .pipe(submissionHookSchema);
-
-const postHookFieldSchema = z
-  .union([z.string().min(1), postHookSchema])
-  .transform((value) =>
-    typeof value === "string" ? { run: value } : value
-  )
-  .pipe(postHookSchema);
+const preHookFieldSchema = hookField(hookBaseSchema);
+const submissionHookFieldSchema = hookField(submissionHookSchema);
+const postHookFieldSchema = hookField(postHookSchema);
 
 export const hooksConfigSchema = z
   .object({

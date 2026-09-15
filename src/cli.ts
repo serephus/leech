@@ -20,6 +20,8 @@ Options:
   --dry-run              Render and log only; create no commits
   --verbose              Verbose logging
   --help                 Show this help
+
+Value flags also accept the --flag=value form.
 `;
 
 interface CliOptions {
@@ -33,51 +35,70 @@ interface CliOptions {
   verbose: boolean;
 }
 
+/** Parses argv. Returns null after handling `--help`. Throws on invalid input. */
 function parseArgs(argv: string[]): CliOptions | null {
   const opts: CliOptions = { dryRun: false, verbose: false };
-  const take = (i: number): string => {
-    const value = argv[i];
-    if (value === undefined) {
-      throw new Error(`missing value for ${argv[i - 1] ?? "argument"}`);
-    }
-    return value;
-  };
+
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    switch (arg) {
+    const arg = argv[i]!;
+    const eq = arg.indexOf("=");
+    const flag = eq === -1 ? arg : arg.slice(0, eq);
+    const inline = eq === -1 ? undefined : arg.slice(eq + 1);
+
+    /** Returns the flag's value (inline `=value` or the next argument). */
+    const value = (): string => {
+      if (inline !== undefined) return inline;
+      const next = argv[++i];
+      if (next === undefined) throw new Error(`missing value for ${flag}`);
+      return next;
+    };
+    /** True for value-less flags; rejects `--flag=value`. */
+    const enabled = (): boolean => {
+      if (inline !== undefined) throw new Error(`${flag} takes no value`);
+      return true;
+    };
+
+    switch (flag) {
       case "--help":
       case "-h":
         console.log(USAGE);
         return null;
       case "--config":
-        opts.config = take(++i);
+        opts.config = value();
         break;
       case "--session":
-        opts.session = take(++i);
+        opts.session = value();
         break;
       case "--csrf":
-        opts.csrf = take(++i);
+        opts.csrf = value();
         break;
       case "--token":
-        opts.token = take(++i);
+        opts.token = value();
         break;
       case "--repo":
-        opts.repo = take(++i);
+        opts.repo = value();
         break;
       case "--branch":
-        opts.branch = take(++i);
+        opts.branch = value();
         break;
       case "--dry-run":
-        opts.dryRun = true;
+        opts.dryRun = enabled();
         break;
       case "--verbose":
-        opts.verbose = true;
+        opts.verbose = enabled();
         break;
       default:
         throw new Error(`unknown argument: ${arg}`);
     }
   }
   return opts;
+}
+
+/** Parses `owner/name`, rejecting extra path segments. */
+function parseRepo(value: string): { owner: string; name: string } {
+  const match = /^([^/]+)\/([^/]+)$/.exec(value);
+  if (!match) throw new Error(`--repo must be owner/name, got "${value}"`);
+  return { owner: match[1]!, name: match[2]! };
 }
 
 async function main(): Promise<void> {
@@ -92,20 +113,16 @@ async function main(): Promise<void> {
 
   const config = parseConfig(configYaml);
   if (argv.branch) config.branch = argv.branch;
-  if (argv.repo) {
-    const [owner, name] = argv.repo.split("/");
-    if (!owner || !name) {
-      throw new Error(`--repo must be owner/name, got "${argv.repo}"`);
-    }
-    config.repo = { owner, name };
-  }
+  if (argv.repo) config.repo = parseRepo(argv.repo);
 
   const token = argv.token ?? process.env.GITHUB_TOKEN;
   const session = argv.session ?? process.env.LEETCODE_SESSION;
   const csrf = argv.csrf ?? process.env.LEETCODE_CSRF_TOKEN;
   if (!token) throw new Error("missing --token (or GITHUB_TOKEN)");
   if (!session || !csrf) {
-    throw new Error("missing --session/--csrf (or LEETCODE_SESSION/LEETCODE_CSRF_TOKEN)");
+    throw new Error(
+      "missing --session/--csrf (or LEETCODE_SESSION/LEETCODE_CSRF_TOKEN)"
+    );
   }
 
   const octokit = new Octokit({ auth: token });

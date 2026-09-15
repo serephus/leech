@@ -1,12 +1,5 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import type { Octokit } from "@octokit/rest";
-import {
-  applyFilters,
-  applyQuestionFilters,
-  needsQuestionMetadata,
-} from "./filters";
+import { applyFilters, applyQuestionFilters, needsQuestionMetadata } from "./filters";
 import { getDefaultBranch, SyncCommitter } from "./git";
 import type { CommitFile } from "./git";
 import { LeetCodeClient } from "./leetcode";
@@ -26,6 +19,7 @@ import {
 import type { TemplateContext } from "./render";
 import { scanWatermark } from "./state";
 import {
+  HookRunner,
   buildRepoContext,
   collectWorkspace,
   hookEnv,
@@ -33,18 +27,19 @@ import {
   materializeWorkspace,
   postHookContext,
   preHookContext,
-  resolveOnError,
-  runHook,
   submissionHookContext,
+  withTempWorkspace,
 } from "./hooks";
-import type { ResolvedHook } from "./hooks";
+import type { RepoContext, ResolvedHook } from "./hooks";
+import type { SubmissionPhase } from "./config";
 import type {
-  HookErrorPolicy,
   LeechConfig,
+  PostHookConfig,
   Question,
   SubmissionListEntry,
   SyncSummary,
 } from "./types";
+import { log } from "./log";
 
 export interface RunOptions {
   octokit: Octokit;
@@ -55,20 +50,30 @@ export interface RunOptions {
   currentRepo?: { owner: string; name: string };
 }
 
+interface SyncTarget {
+  owner: string;
+  repo: string;
+  branch: string;
+}
+
+interface ProcessedSubmission {
+  id: number;
+  slug: string;
+  lang: string;
+  timestamp: number;
+  files: string[];
+}
+
 export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   const { octokit, client, config, dryRun = false, verbose = false } = opts;
 
   configureRender(config.render);
 
-  const owner = config.repo?.owner ?? opts.currentRepo?.owner;
-  const repo = config.repo?.name ?? opts.currentRepo?.name;
-  if (!owner || !repo) {
-    throw new Error(
-      "config.repo (owner/name) is required when not running inside GitHub Actions"
-    );
-  }
-  const branch = config.branch ?? (await getDefaultBranch(octokit, owner, repo));
-
+  const { owner, repo, branch } = await resolveTarget(
+    octokit,
+    config,
+    opts.currentRepo
+  );
   log(`target: ${owner}/${repo}@${branch} (${dryRun ? "dry-run" : "live"})`);
 
   const committer = new SyncCommitter(
@@ -88,11 +93,15 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     branch,
     config.commit.prefix
   );
-  log(
-    `watermark: ${watermark} (${new Date(watermark * 1000).toISOString()})`
-  );
+  log(`watermark: ${watermark} (${new Date(watermark * 1000).toISOString()})`);
 
-  const hooks = config.hooks;
+  const { hooks } = config;
+  const hookRunner = new HookRunner({
+    shell: hooks.shell,
+    timeoutMs: hooks.timeoutMs,
+    onError: hooks.onError,
+    verbose,
+  });
   const repoContext = buildRepoContext({
     owner,
     repo,
@@ -103,75 +112,27 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
     verbose,
   });
 
-  // Pre-sync hook: once, after the watermark is known and before any LeetCode
-  // call. Aborts the run on `fail`.
-  await runHookPoint(
+  // pre: once, after the watermark is known and before any LeetCode call.
+  await hookRunner.run(
     "pre",
     hooks.pre,
     preHookContext(repoContext, watermark, config.commit.prefix),
-    {
-      shell: hooks.shell,
-      name: "pre",
-      verbose,
-      defaultTimeoutMs: hooks.timeoutMs,
-      globalOnError: hooks.onError,
-      allowSkip: false,
-      baseEnv: hookEnv(
-        process.env,
-        hookEnvVars({
-          hook: "pre",
-          repo: `${owner}/${repo}`,
-          branch,
-          destination: config.destination,
-          site: config.site,
-          dryRun,
-          verbose,
-        })
-      ),
-    }
+    repoHookEnv(repoContext, "pre")
   );
 
-  // Collect submissions newer than the watermark (API returns newest first).
-  const candidates: SubmissionListEntry[] = [];
-  let offset = 0;
-  for (;;) {
-    const page = await client.listSubmissions(offset);
-    let reachedWatermark = false;
-    for (const entry of page.submissions) {
-      if (entry.timestamp <= watermark) {
-        reachedWatermark = true;
-        break;
-      }
-      candidates.push(entry);
-    }
-    if (reachedWatermark || !page.hasMore || page.submissions.length === 0) {
-      break;
-    }
-    offset += page.submissions.length;
-  }
+  const candidates = await collectCandidates(client, watermark);
   log(`submissions newer than watermark: ${candidates.length}`);
 
   const questionCache = new Map<string, Question | null>();
+  const assetCache = new Map<string, Buffer>();
+
   let filtered = applyFilters(candidates, config.filters);
-
-  // Difficulty/tag filters need problem metadata, which the submission list
-  // doesn't carry. Resolve each surviving problem once (the cache also serves
-  // the main loop below) and drop the ones that don't match.
-  if (needsQuestionMetadata(config.filters)) {
-    const slugs = [...new Set(filtered.map((e) => e.titleSlug))];
-    log(`resolving ${slugs.length} question(s) for difficulty/tag filters`);
-    for (const slug of slugs) {
-      if (!questionCache.has(slug)) {
-        questionCache.set(slug, await client.getQuestion(slug));
-      }
-    }
-    filtered = applyQuestionFilters(
-      filtered,
-      (slug) => questionCache.get(slug) ?? null,
-      config.filters
-    );
-  }
-
+  filtered = await resolveQuestionFilters(
+    client,
+    filtered,
+    config.filters,
+    questionCache
+  );
   const skippedFiltered = candidates.length - filtered.length;
   log(`after filters: ${filtered.length} (skipped ${skippedFiltered})`);
 
@@ -181,394 +142,542 @@ export async function runSync(opts: RunOptions): Promise<SyncSummary> {
   );
   const submissionHook = hooks.submission;
   const submissionPhase = submissionHook?.when ?? "before-commit";
-  const processed: Array<{
-    id: number;
-    slug: string;
-    lang: string;
-    timestamp: number;
-    files: string[];
-  }> = [];
+  const processed: ProcessedSubmission[] = [];
   let synced = 0;
   let finalWatermark = watermark;
 
   for (const [index, entry] of ordered.entries()) {
-    const details = await client.getSubmissionDetails(entry.id);
-    if (!details) {
-      if (verbose) log(`skip submission ${entry.id}: no details`);
-      continue;
-    }
-    if (details.timestamp <= watermark) {
-      if (verbose) log(`skip submission ${entry.id}: already synced`);
-      continue;
-    }
-
-    let question = questionCache.get(entry.titleSlug);
-    if (question === undefined) {
-      question = await client.getQuestion(entry.titleSlug);
-      questionCache.set(entry.titleSlug, question);
-    }
-    if (!question) {
-      log(
-        `skip submission ${entry.id} (${entry.titleSlug}): question unavailable (locked?)`
-      );
-      continue;
-    }
-
-    const context = buildContext(details, question, config.site);
-
-    // Plan asset downloads: every absolute http(s) img src in the problem HTML
-    // maps to `<prefix>/images/<slug>/<filename>`, where prefix is the
-    // destination (assets: "") or the configured assets folder. `assets: null`
-    // disables downloading entirely.
-    const assetPlan: { url: string; filename: string }[] = [];
-    if (config.assets !== null) {
-      const used = new Set<string>();
-      for (const url of extractAssetUrls(question.contentHtml)) {
-        let filename = assetFilename(url);
-        if (used.has(filename)) {
-          let i = 1;
-          while (used.has(`${i}-${filename}`)) i++;
-          filename = `${i}-${filename}`;
-        }
-        used.add(filename);
-        assetPlan.push({ url, filename });
-      }
-    }
-
-    // Download once per URL (cached for the whole run). A failed download
-    // keeps the original URL and logs a warning instead of failing the sync.
-    const assetBytes = new Map<string, Buffer>();
-    for (const a of assetPlan) {
-      if (assetBytes.has(a.url)) continue;
-      try {
-        assetBytes.set(a.url, await downloadAsset(a.url));
-      } catch (err) {
-        assetBytes.set(a.url, Buffer.alloc(0));
-        log(
-          `warning: failed to download asset ${a.url}: ${
-            (err as Error).message
-          } (reference left as-is)`
-        );
-      }
-    }
-    const okAssets = assetPlan.filter(
-      (a) => (assetBytes.get(a.url)?.length ?? 0) > 0
-    );
-
-    const assetsPrefix =
-      config.assets === "" ? config.destination : (config.assets ?? "");
-    const assetFiles: CommitFile[] = okAssets.map((a) => ({
-      path: `${assetsPrefix}/images/${question.titleSlug}/${a.filename}`,
-      content: assetBytes.get(a.url)!,
-      encoding: "base64",
-    }));
-
-    // References are the same for every output file (repo-root-absolute), so
-    // the rewritten content is built once per submission.
-    const relMap = new Map<string, string>();
-    for (const a of okAssets) {
-      relMap.set(
-        a.url,
-        assetReference(
-          config.assets ?? "",
-          `${assetsPrefix}/images/${question.titleSlug}/${a.filename}`
-        )
-      );
-    }
-    const fileContext =
-      relMap.size > 0
-        ? {
-            ...context,
-            question: {
-              ...context.question,
-              content: rewriteAssetUrls(context.question.content, relMap),
-            },
-          }
-        : context;
-
-    const files = config.files.map((tpl) => ({
-      path: renderFilename(tpl.filename, context, config.destination),
-      content: renderTemplate(tpl.content, fileContext),
-    }));
-
-    const message = `${config.commit.prefix} ${renderTemplate(
-      config.commit.message,
-      context
-    )}`.trim();
-
-    const allFiles: CommitFile[] = [...files, ...assetFiles];
-    const assetPaths = new Set(assetFiles.map((f) => f.path));
-    let commitFiles = allFiles;
-
-    // Per-submission hook, phase before-commit: materialize the rendered files
-    // into a temp workspace, let the hook reshape it, then commit the result.
-    if (submissionHook && submissionPhase === "before-commit") {
-      const dir = await makeTempWorkspace();
-      try {
-        await materializeWorkspace(dir, allFiles);
-        const hookCtx = submissionHookContext(
-          repoContext,
-          "before-commit",
-          index,
-          ordered.length,
-          fileContext,
-          allFiles.map((f) => ({
-            path: f.path,
-            asset: assetPaths.has(f.path),
-          })),
-          dir
-        );
-        const outcome = await runHookPoint("submission", submissionHook, hookCtx, {
-          shell: hooks.shell,
-          name: "submission",
-          verbose,
-          defaultTimeoutMs: hooks.timeoutMs,
-          globalOnError: hooks.onError,
-          allowSkip: true,
-          baseEnv: submissionEnv({
-            owner,
-            repo,
-            branch,
-            config,
-            phase: "before-commit",
-            dryRun,
-            verbose,
-            workspace: dir,
-            context: fileContext,
-          }),
-        });
-        if (outcome === "skip") {
-          log(`skip submission ${entry.id}: hook skipped`);
-          continue;
-        }
-        commitFiles =
-          outcome === "ok"
-            ? await collectWorkspace(dir, allFiles)
-            : allFiles;
-      } finally {
-        await fs.rm(dir, { recursive: true, force: true });
-      }
-    }
-
-    if (dryRun) {
-      log(
-        `[dry-run] would commit "${message}" with ${commitFiles.length} file(s)`
-      );
-      for (const f of commitFiles) {
-        if (verbose) log(`  ${f.path}`);
-      }
-    } else {
-      await committer.commitSubmission(commitFiles, message, details.timestamp);
-    }
-
-    // Per-submission hook, phase after-commit: observational, runs in both
-    // live and dry-run modes.
-    if (submissionHook && submissionPhase === "after-commit") {
-      const hookCtx = submissionHookContext(
-        repoContext,
-        "after-commit",
-        index,
-        ordered.length,
-        fileContext,
-        commitFiles.map((f) => ({
-          path: f.path,
-          asset: assetPaths.has(f.path),
-        })),
-        ""
-      );
-      await runHookPoint("submission", submissionHook, hookCtx, {
-        shell: hooks.shell,
-        name: "submission",
-        verbose,
-        defaultTimeoutMs: hooks.timeoutMs,
-        globalOnError: hooks.onError,
-        allowSkip: false,
-        baseEnv: submissionEnv({
-          owner,
-          repo,
-          branch,
-          config,
-          phase: "after-commit",
-          dryRun,
-          verbose,
-          workspace: "",
-          context: fileContext,
-        }),
-      });
-    }
-
-    if (!dryRun && verbose) {
-      log(`committed "${message}" (${commitFiles.length} file(s))`);
-      for (const f of commitFiles) log(`  ${f.path}`);
-    }
+    const result = await processSubmission({
+      entry,
+      index,
+      total: ordered.length,
+      watermark,
+      client,
+      config,
+      committer,
+      dryRun,
+      verbose,
+      questionCache,
+      assetCache,
+      repoContext,
+      hookRunner,
+      submissionHook,
+      submissionPhase,
+    });
+    if (!result) continue;
 
     synced++;
-    finalWatermark = Math.max(finalWatermark, details.timestamp);
-    processed.push({
-      id: entry.id,
-      slug: entry.titleSlug,
-      lang: details.lang,
-      timestamp: details.timestamp,
-      files: commitFiles.map((f) => f.path),
-    });
+    finalWatermark = Math.max(finalWatermark, result.timestamp);
+    processed.push(result);
   }
 
-  // Post-sync hook: runs before the single ref update. Files it writes become
-  // an optional post-sync commit in the same push.
-  let postFiles: CommitFile[] = [];
-  let postMessage = "";
-  const postHook = hooks.post;
-  if (postHook) {
-    const dir = await makeTempWorkspace();
-    try {
-      const hookCtx = postHookContext(
-        repoContext,
-        { scanned: candidates.length, skippedFiltered, synced, watermark },
-        finalWatermark,
-        synced,
-        processed
-      );
-      const outcome = await runHookPoint("post", postHook, hookCtx, {
-        shell: hooks.shell,
-        name: "post",
-        verbose,
-        defaultTimeoutMs: hooks.timeoutMs,
-        globalOnError: hooks.onError,
-        allowSkip: false,
-        baseEnv: hookEnv(
-          process.env,
-          hookEnvVars({
-            hook: "post",
-            repo: `${owner}/${repo}`,
-            branch,
-            destination: config.destination,
-            site: config.site,
-            dryRun,
-            verbose,
-            workspace: dir,
-          })
-        ),
-      });
-      if (outcome === "ok") {
-        const collected = await collectWorkspace(dir, []);
-        if (collected.length > 0) {
-          if (postHook.commit === null) {
-            log(
-              `warning: post hook produced ${collected.length} file(s) but commit is disabled; ignoring`
-            );
-          } else {
-            postFiles = collected;
-            postMessage = renderTemplate(
-              postHook.commit ?? `${config.commit.prefix} post-sync`,
-              hookCtx
-            ).trim();
-          }
-        }
-      }
-    } finally {
-      await fs.rm(dir, { recursive: true, force: true });
-    }
-  }
+  await runPostHook({
+    repoContext,
+    config,
+    hookRunner,
+    postHook: hooks.post,
+    committer,
+    summary: { scanned: candidates.length, skippedFiltered, synced, watermark },
+    finalWatermark,
+    processed,
+    dryRun,
+  });
 
-  if (!dryRun && postFiles.length > 0) {
-    await committer.commitPostSync(postFiles, postMessage);
-    log(`committed post-sync "${postMessage}" (${postFiles.length} file(s))`);
-  } else if (dryRun && postFiles.length > 0) {
-    log(
-      `[dry-run] would create post-sync commit "${postMessage}" with ${postFiles.length} file(s)`
-    );
-  }
-
-  // Push all commits of this sync in one ref update (per-sync, not per-submission).
+  // Push every commit of this sync in one ref update (per-sync, not per-submission).
   const pushed = await committer.flush();
   if (pushed > 0) {
     log(`pushed ${pushed} commit(s) to ${owner}/${repo}@${branch}`);
   }
 
-  log(
-    `done: synced=${synced}, filtered=${skippedFiltered}, watermark=${watermark}`
-  );
+  log(`done: synced=${synced}, filtered=${skippedFiltered}, watermark=${watermark}`);
   return { scanned: candidates.length, skippedFiltered, synced, watermark };
 }
 
-function submissionEnv(o: {
-  owner: string;
-  repo: string;
-  branch: string;
+/* ------------------------------------------------------------------ */
+/* Target + history                                                    */
+/* ------------------------------------------------------------------ */
+
+async function resolveTarget(
+  octokit: Octokit,
+  config: LeechConfig,
+  currentRepo: RunOptions["currentRepo"]
+): Promise<SyncTarget> {
+  const owner = config.repo?.owner ?? currentRepo?.owner;
+  const repo = config.repo?.name ?? currentRepo?.name;
+  if (!owner || !repo) {
+    throw new Error(
+      "config.repo (owner/name) is required when not running inside GitHub Actions"
+    );
+  }
+  const branch =
+    config.branch ?? (await getDefaultBranch(octokit, owner, repo));
+  return { owner, repo, branch };
+}
+
+/** Minimal client surface used by {@link collectCandidates} (easy to fake in tests). */
+export interface SubmissionLister {
+  listSubmissions(offset: number): Promise<{
+    hasMore: boolean;
+    submissions: SubmissionListEntry[];
+  }>;
+}
+
+/** Collects submissions newer than the watermark (the API returns newest first). */
+export async function collectCandidates(
+  client: SubmissionLister,
+  watermark: number
+): Promise<SubmissionListEntry[]> {
+  const candidates: SubmissionListEntry[] = [];
+  let offset = 0;
+  for (;;) {
+    const page = await client.listSubmissions(offset);
+    for (const entry of page.submissions) {
+      if (entry.timestamp <= watermark) return candidates;
+      candidates.push(entry);
+    }
+    if (!page.hasMore || page.submissions.length === 0) return candidates;
+    offset += page.submissions.length;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Filters + question metadata                                         */
+/* ------------------------------------------------------------------ */
+
+async function loadQuestion(
+  client: LeetCodeClient,
+  cache: Map<string, Question | null>,
+  slug: string
+): Promise<Question | null> {
+  const cached = cache.get(slug);
+  if (cached !== undefined) return cached;
+  const question = await client.getQuestion(slug);
+  cache.set(slug, question);
+  return question;
+}
+
+/**
+ * Difficulty/tag filters need problem metadata the submission list doesn't
+ * carry. Resolve each surviving problem once (the cache also serves the main
+ * loop) and drop the ones that don't match.
+ */
+async function resolveQuestionFilters(
+  client: LeetCodeClient,
+  entries: SubmissionListEntry[],
+  filters: LeechConfig["filters"],
+  cache: Map<string, Question | null>
+): Promise<SubmissionListEntry[]> {
+  if (!needsQuestionMetadata(filters)) return entries;
+
+  const slugs = [...new Set(entries.map((entry) => entry.titleSlug))];
+  log(`resolving ${slugs.length} question(s) for difficulty/tag filters`);
+  for (const slug of slugs) {
+    await loadQuestion(client, cache, slug);
+  }
+  return applyQuestionFilters(entries, (slug) => cache.get(slug) ?? null, filters);
+}
+
+/* ------------------------------------------------------------------ */
+/* Rendering + assets                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface AssetPlanEntry {
+  url: string;
+  filename: string;
+}
+
+/**
+ * Plans asset downloads: every absolute http(s) img src in the problem HTML
+ * maps to `<prefix>/images/<slug>/<filename>`. Returns an empty plan when
+ * asset downloading is disabled (`assets: null`).
+ */
+export function planAssets(html: string): AssetPlanEntry[] {
+  const used = new Set<string>();
+  const plan: AssetPlanEntry[] = [];
+  for (const url of extractAssetUrls(html)) {
+    let filename = assetFilename(url);
+    if (used.has(filename)) {
+      let suffix = 1;
+      while (used.has(`${suffix}-${filename}`)) suffix++;
+      filename = `${suffix}-${filename}`;
+    }
+    used.add(filename);
+    plan.push({ url, filename });
+  }
+  return plan;
+}
+
+/**
+ * Downloads every planned asset once for the whole run. A failed download logs
+ * a warning and leaves the original URL in place instead of failing the sync.
+ */
+async function downloadAssets(
+  plan: AssetPlanEntry[],
+  cache: Map<string, Buffer>
+): Promise<void> {
+  for (const entry of plan) {
+    if (cache.has(entry.url)) continue;
+    try {
+      cache.set(entry.url, await downloadAsset(entry.url));
+    } catch (err) {
+      cache.set(entry.url, Buffer.alloc(0));
+      log(
+        `warning: failed to download asset ${entry.url}: ${
+          (err as Error).message
+        } (reference left as-is)`
+      );
+    }
+  }
+}
+
+/**
+ * Builds the downloadable-asset commit files and the HTML URL → reference map
+ * used to rewrite the problem description. Failed/empty downloads are skipped.
+ */
+function buildAssetFiles(
+  plan: AssetPlanEntry[],
+  cache: Map<string, Buffer>,
+  assets: string,
+  destination: string,
+  slug: string
+): { files: CommitFile[]; relMap: Map<string, string> } {
+  const prefix = assets === "" ? destination : assets;
+  const files: CommitFile[] = [];
+  const relMap = new Map<string, string>();
+
+  for (const entry of plan) {
+    const bytes = cache.get(entry.url);
+    if (!bytes || bytes.length === 0) continue;
+
+    const storagePath = `${prefix}/images/${slug}/${entry.filename}`;
+    files.push({ path: storagePath, content: bytes, encoding: "base64" });
+    relMap.set(entry.url, assetReference(assets, storagePath));
+  }
+  return { files, relMap };
+}
+
+/** Downloads assets for a problem (unless disabled) and plans their files. */
+async function prepareAssets(
+  question: Question,
+  assets: string | null,
+  destination: string,
+  cache: Map<string, Buffer>
+): Promise<{ files: CommitFile[]; relMap: Map<string, string> }> {
+  if (assets === null) return { files: [], relMap: new Map() };
+
+  const plan = planAssets(question.contentHtml);
+  await downloadAssets(plan, cache);
+  return buildAssetFiles(plan, cache, assets, destination, question.titleSlug);
+}
+
+/** Renders the configured output files and the commit message. */
+function renderSubmission(
+  config: LeechConfig,
+  context: TemplateContext,
+  fileContext: TemplateContext
+): { files: CommitFile[]; message: string } {
+  const files = config.files.map((tpl) => ({
+    path: renderFilename(tpl.filename, context, config.destination),
+    content: renderTemplate(tpl.content, fileContext),
+  }));
+  const message = `${config.commit.prefix} ${renderTemplate(
+    config.commit.message,
+    context
+  )}`.trim();
+  return { files, message };
+}
+
+/**
+ * Rewrites the problem HTML so downloaded assets point at their repo paths.
+ * References are identical for every output file, so this happens once per
+ * submission.
+ */
+function applyAssetReferences(
+  context: TemplateContext,
+  relMap: Map<string, string>
+): TemplateContext {
+  if (relMap.size === 0) return context;
+  return {
+    ...context,
+    question: {
+      ...context.question,
+      content: rewriteAssetUrls(context.question.content, relMap),
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-submission pipeline                                             */
+/* ------------------------------------------------------------------ */
+
+interface ProcessSubmissionOptions {
+  entry: SubmissionListEntry;
+  index: number;
+  total: number;
+  watermark: number;
+  client: LeetCodeClient;
   config: LeechConfig;
-  phase: "before-commit" | "after-commit";
+  committer: SyncCommitter;
   dryRun: boolean;
   verbose: boolean;
-  workspace: string;
-  context: TemplateContext;
-}): NodeJS.ProcessEnv {
+  questionCache: Map<string, Question | null>;
+  assetCache: Map<string, Buffer>;
+  repoContext: RepoContext;
+  hookRunner: HookRunner;
+  submissionHook: ResolvedHook | undefined;
+  submissionPhase: SubmissionPhase;
+}
+
+/**
+ * Renders, (optionally) hooks, and commits a single submission. Returns the
+ * processed record, or null when the submission is skipped (no details,
+ * already synced, unavailable question, or a `skip` hook policy).
+ */
+async function processSubmission(
+  o: ProcessSubmissionOptions
+): Promise<ProcessedSubmission | null> {
+  const { entry, index, total, verbose, config, repoContext } = o;
+
+  const details = await o.client.getSubmissionDetails(entry.id);
+  if (!details) {
+    if (verbose) log(`skip submission ${entry.id}: no details`);
+    return null;
+  }
+  if (details.timestamp <= o.watermark) {
+    if (verbose) log(`skip submission ${entry.id}: already synced`);
+    return null;
+  }
+
+  const question = await loadQuestion(o.client, o.questionCache, entry.titleSlug);
+  if (!question) {
+    log(
+      `skip submission ${entry.id} (${entry.titleSlug}): question unavailable (locked?)`
+    );
+    return null;
+  }
+
+  const context = buildContext(details, question, config.site);
+  const { files: assetFiles, relMap } = await prepareAssets(
+    question,
+    config.assets,
+    config.destination,
+    o.assetCache
+  );
+  const fileContext = applyAssetReferences(context, relMap);
+  const { files: renderedFiles, message } = renderSubmission(
+    config,
+    context,
+    fileContext
+  );
+
+  const allFiles: CommitFile[] = [...renderedFiles, ...assetFiles];
+  const assetPaths = new Set(assetFiles.map((file) => file.path));
+  let commitFiles = allFiles;
+
+  // before-commit: let the hook reshape a temp workspace, then commit the result.
+  if (o.submissionHook && o.submissionPhase === "before-commit") {
+    const { outcome, files } = await runBeforeCommitHook(o, fileContext, allFiles, assetPaths);
+    if (outcome === "skip") {
+      log(`skip submission ${entry.id}: hook skipped`);
+      return null;
+    }
+    commitFiles = files;
+  }
+
+  if (o.dryRun) {
+    log(`[dry-run] would commit "${message}" with ${commitFiles.length} file(s)`);
+    if (verbose) for (const file of commitFiles) log(`  ${file.path}`);
+  } else {
+    await o.committer.commitSubmission(commitFiles, message, details.timestamp);
+  }
+
+  // after-commit: observational, runs after the commit object is created.
+  if (o.submissionHook && o.submissionPhase === "after-commit") {
+    const hookCtx = submissionHookContext(
+      repoContext,
+      "after-commit",
+      index,
+      total,
+      fileContext,
+      commitFiles.map((file) => ({ path: file.path, asset: assetPaths.has(file.path) })),
+      ""
+    );
+    await o.hookRunner.run(
+      "submission",
+      o.submissionHook,
+      hookCtx,
+      submissionEnv(repoContext, "after-commit", fileContext, "")
+    );
+  }
+
+  if (!o.dryRun && verbose) {
+    log(`committed "${message}" (${commitFiles.length} file(s))`);
+    for (const file of commitFiles) log(`  ${file.path}`);
+  }
+
+  return {
+    id: entry.id,
+    slug: entry.titleSlug,
+    lang: details.lang,
+    timestamp: details.timestamp,
+    files: commitFiles.map((file) => file.path),
+  };
+}
+
+/**
+ * Runs the per-submission before-commit hook against a temp workspace and
+ * returns the files to commit: the (possibly reshaped) workspace on success,
+ * or the original rendered files when the hook only warned.
+ */
+async function runBeforeCommitHook(
+  o: ProcessSubmissionOptions,
+  context: TemplateContext,
+  allFiles: CommitFile[],
+  assetPaths: Set<string>
+): Promise<{ outcome: "ok" | "warn" | "skip"; files: CommitFile[] }> {
+  return withTempWorkspace(async (dir) => {
+    await materializeWorkspace(dir, allFiles);
+    const hookCtx = submissionHookContext(
+      o.repoContext,
+      "before-commit",
+      o.index,
+      o.total,
+      context,
+      allFiles.map((file) => ({ path: file.path, asset: assetPaths.has(file.path) })),
+      dir
+    );
+    const outcome = await o.hookRunner.run(
+      "submission",
+      o.submissionHook,
+      hookCtx,
+      submissionEnv(o.repoContext, "before-commit", context, dir),
+      { allowSkip: true }
+    );
+    const files =
+      outcome === "ok" ? await collectWorkspace(dir, allFiles) : allFiles;
+    return { outcome, files };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Post hook                                                           */
+/* ------------------------------------------------------------------ */
+
+interface RunPostHookOptions {
+  repoContext: RepoContext;
+  config: LeechConfig;
+  hookRunner: HookRunner;
+  postHook: PostHookConfig | undefined;
+  committer: SyncCommitter;
+  summary: SyncSummary;
+  finalWatermark: number;
+  processed: ProcessedSubmission[];
+  dryRun: boolean;
+}
+
+/**
+ * Runs the post hook in an empty workspace. Files it writes become an optional
+ * post-sync commit in the same push, unless `commit: null` disables it.
+ */
+async function runPostHook(o: RunPostHookOptions): Promise<void> {
+  if (!o.postHook) return;
+
+  const { dryRun, config, postHook, hookRunner, repoContext } = o;
+  const { files: postFiles, message: postMessage } = await withTempWorkspace(
+    async (dir) => {
+      const hookCtx = postHookContext(
+        repoContext,
+        o.summary,
+        o.finalWatermark,
+        o.summary.synced,
+        o.processed
+      );
+      const env = repoHookEnv(repoContext, "post", dir);
+      const outcome = await hookRunner.run("post", postHook, hookCtx, env);
+      if (outcome !== "ok") return { files: [] as CommitFile[], message: "" };
+
+      const files = await collectWorkspace(dir, []);
+      if (files.length === 0) return { files, message: "" };
+      if (postHook.commit === null) {
+        log(
+          `warning: post hook produced ${files.length} file(s) but commit is disabled; ignoring`
+        );
+        return { files: [] as CommitFile[], message: "" };
+      }
+      const message = renderTemplate(
+        postHook.commit ?? `${config.commit.prefix} post-sync`,
+        hookCtx
+      ).trim();
+      return { files, message };
+    }
+  );
+
+  if (postFiles.length === 0) return;
+
+  if (dryRun) {
+    log(
+      `[dry-run] would create post-sync commit "${postMessage}" with ${postFiles.length} file(s)`
+    );
+  } else {
+    await o.committer.commitPostSync(postFiles, postMessage);
+    log(`committed post-sync "${postMessage}" (${postFiles.length} file(s))`);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Hook environments                                                   */
+/* ------------------------------------------------------------------ */
+
+/** Environment for a pre/post hook (repo context only). */
+function repoHookEnv(
+  repo: RepoContext,
+  hook: "pre" | "post",
+  workspace?: string
+): NodeJS.ProcessEnv {
   return hookEnv(
     process.env,
     hookEnvVars({
-      hook: "submission",
-      phase: o.phase,
-      repo: `${o.owner}/${o.repo}`,
-      branch: o.branch,
-      destination: o.config.destination,
-      site: o.config.site,
-      dryRun: o.dryRun,
-      verbose: o.verbose,
-      workspace: o.workspace,
-      submission: {
-        id: o.context.submission.id,
-        timestamp: o.context.submission.timestamp,
-        lang: o.context.submission.lang,
-      },
-      question: {
-        titleSlug: o.context.question.title_slug,
-        title: o.context.question.title,
-        frontendId: o.context.question.frontend_id,
-      },
+      hook,
+      repo: `${repo.repo.owner}/${repo.repo.name}`,
+      branch: repo.branch,
+      destination: repo.destination,
+      site: repo.site,
+      dryRun: repo.dryRun,
+      verbose: repo.verbose,
+      workspace,
     })
   );
 }
 
-async function makeTempWorkspace(): Promise<string> {
-  return fs.mkdtemp(path.join(os.tmpdir(), "leech-hook-"));
-}
-
-async function runHookPoint(
-  point: "pre" | "submission" | "post",
-  hook: ResolvedHook | undefined,
-  context: object,
-  o: {
-    shell: string;
-    name: string;
-    verbose: boolean;
-    defaultTimeoutMs: number;
-    globalOnError: HookErrorPolicy;
-    allowSkip: boolean;
-    baseEnv: NodeJS.ProcessEnv;
-  }
-): Promise<"ok" | "warn" | "skip"> {
-  if (!hook) return "ok";
-  const result = await runHook(hook, context, {
-    shell: o.shell,
-    name: o.name,
-    verbose: o.verbose,
-    defaultTimeoutMs: o.defaultTimeoutMs,
-    baseEnv: o.baseEnv,
-  });
-  if (result.ok) return "ok";
-  const policy = resolveOnError(hook.onError, o.globalOnError, o.allowSkip);
-  if (policy === "skip") {
-    log(`hook "${o.name}" requested skip (${result.error ?? "non-zero exit"})`);
-    return "skip";
-  }
-  if (policy === "warn") {
-    log(
-      `warning: hook "${o.name}" failed (${result.error ?? "non-zero exit"}); continuing`
-    );
-    return "warn";
-  }
-  throw new Error(`hook "${o.name}" failed: ${result.error ?? "non-zero exit"}`);
-}
-
-function log(message: string): void {
-  console.log(`[leech] ${message}`);
+/** Environment for a per-submission hook (adds submission/question vars). */
+function submissionEnv(
+  repo: RepoContext,
+  phase: SubmissionPhase,
+  context: TemplateContext,
+  workspace: string
+): NodeJS.ProcessEnv {
+  return hookEnv(
+    process.env,
+    hookEnvVars({
+      hook: "submission",
+      phase,
+      repo: `${repo.repo.owner}/${repo.repo.name}`,
+      branch: repo.branch,
+      destination: repo.destination,
+      site: repo.site,
+      dryRun: repo.dryRun,
+      verbose: repo.verbose,
+      workspace,
+      submission: {
+        id: context.submission.id,
+        timestamp: context.submission.timestamp,
+        lang: context.submission.lang,
+      },
+      question: {
+        titleSlug: context.question.title_slug,
+        title: context.question.title,
+        frontendId: context.question.frontend_id,
+      },
+    })
+  );
 }

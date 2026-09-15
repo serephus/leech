@@ -274,8 +274,8 @@ On **any** error the hook's workspace is discarded (never partially committed):
 - `skip` → (only `submission.before-commit`) log and continue without committing this
   submission.
 
-Timeout is implemented with `AbortSignal` on the spawned process: `SIGTERM`,
-then `SIGKILL` after a short grace period; it is reported as an error with
+Timeout is implemented by sending `SIGTERM` to the spawned process, then
+`SIGKILL` after a short grace period; it is reported as an error with
 `onError` handling as above.
 
 ## 6. File influence (workspace protocol)
