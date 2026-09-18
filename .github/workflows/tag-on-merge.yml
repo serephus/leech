@@ -50,6 +50,8 @@ jobs:
 
       - name: Create Git tag
         if: steps.detect.outputs.is_version_bump == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           NEW_TAG="${{ steps.version.outputs.new_tag }}"
 
