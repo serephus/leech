@@ -1,0 +1,71 @@
+name: Monthly Version Bump PR
+
+on:
+  schedule:
+    # Runs monthly on the 1st at 04:37 UTC — an offset time to avoid GitHub's high-load periods
+    - cron: '37 4 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: version
+        run: |
+          # Get the latest tag, or default to v0.0.0 if none exists
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Last tag: $LAST_TAG"
+
+          # Strip the 'v' prefix and split into major.minor.patch
+          VERSION="${LAST_TAG#v}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+
+          # Bump the patch version (e.g., v1.2.3 -> v1.2.4)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "new_version=${MAJOR}.${MINOR}.${NEW_PATCH}" >> "$GITHUB_OUTPUT"
+
+      - name: Update README and lockfile
+        run: |
+          NEW_TAG="${{ steps.version.outputs.new_tag }}"
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+
+          # update readme
+          sed -i "s/leech@v[0-9]\+\.[0-9]\+\.[0-9]\+/leech@${NEW_TAG}/g" README.md
+
+          # Update lockfile
+          if [ -f package.json ]; then
+            sed -i "s/\"version\": \"[0-9]\+\.[0-9]\+\.[0-9]\+\"/\"version\": \"${NEW_VERSION}\"/" package.json
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(release): bump version to ${{ steps.version.outputs.new_tag }}"
+          title: "chore(release): bump version to ${{ steps.version.outputs.new_tag }}"
+          body: |
+            Automated monthly version bump.
+
+            - **Previous tag:** `${{ steps.version.outputs.last_tag }}`
+            - **New tag:** `${{ steps.version.outputs.new_tag }}`
+
+            This PR updates version references in `README.md` and the package.json.
+          branch: chore/monthly-version-bump
+          delete-branch: true
+          labels: |
+            automated
+            release
