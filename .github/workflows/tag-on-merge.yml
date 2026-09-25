@@ -19,6 +19,11 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          # Use the PAT, not the automatic GITHUB_TOKEN. `actions/checkout`
+          # persists this token for `git push`, and events caused by
+          # GITHUB_TOKEN never trigger further workflow runs (so dist.yml
+          # would never fire).
+          token: ${{ secrets.GH_PAT }}
 
       - name: Detect version-bump PR
         id: detect
@@ -50,8 +55,6 @@ jobs:
 
       - name: Create Git tag
         if: steps.detect.outputs.is_version_bump == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           NEW_TAG="${{ steps.version.outputs.new_tag }}"
 
