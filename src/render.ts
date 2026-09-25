@@ -326,7 +326,11 @@ const TYPST_DEFAULTS: TypstRendererOptions = {
   subscript: ["_", ""],
 };
 
-/** Escapes Typst markup special characters in plain text. */
+/**
+ * Escapes Typst markup special characters in plain text. Brackets must be
+ * escaped too: `]` terminates a content block, so an unmatched one (e.g. in
+ * the string `"a]b"`) is a hard parse error in Typst.
+ */
 function escapeTypstText(text: string): string {
   return text
     .replace(/\\/g, "\\\\")
@@ -334,7 +338,9 @@ function escapeTypstText(text: string): string {
     .replace(/#/g, "\\#")
     .replace(/@/g, "\\@")
     .replace(/\*/g, "\\*")
-    .replace(/_/g, "\\_");
+    .replace(/_/g, "\\_")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]");
 }
 
 function makeTypstConverter(options: TypstOptions): (html: string) => string {
