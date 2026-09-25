@@ -227,6 +227,18 @@ describe("toTypst", () => {
     );
   });
 
+  it("escapes brackets so unmatched ones do not break the document", () => {
+    expect(toTypst('<p>s = "a]b"</p>')).toBe('s = "a\\]b"\n');
+    expect(toTypst('<p>s = "a[b"</p>')).toBe('s = "a\\[b"\n');
+    // balanced brackets are escaped too, which is harmless in Typst
+    expect(toTypst("<p>nums = [1,2,3]</p>")).toBe("nums = \\[1,2,3\\]\n");
+    // generated content blocks (links, tables, formatting) stay unescaped
+    expect(
+      toTypst('<p><a href="https://e.com">a]b</a></p>')
+    ).toContain('#link("https://e.com")[a\\]b]');
+    expect(toTypst("<p><del>x]y</del></p>")).toContain("#strike[x\\]y]");
+  });
+
   it("converts links, formatting, and strikethrough", () => {
     expect(
       toTypst('<p><a href="https://e.com">x</a> <strong>b</strong> <del>d</del></p>')

@@ -278,7 +278,9 @@ content, default `["^", "^"]` / `["~", "~"]`; `false` renders inline),
 - **`toTypst(options?)`** — [Typst](https://typst.app) markup. Options:
   `headingPrefixes` (prefix per heading level 1-6, default
   `["", "= ", "== ", ...]`), `codeFence` (default ` ``` `), `escape`
-  (default `true`), `hr` (default `#line(length: 100%)`), and `superscript` /
+  (default `true`; escapes Typst special characters in text, including
+  `[`/`]` so unmatched brackets in problem strings don't break the
+  document), `hr` (default `#line(length: 100%)`), and `superscript` /
   `subscript` (wrapper `[prefix, suffix]`, default `["^", ""]` / `["_", ""]`;
   `false` renders inline).
 
