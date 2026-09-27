@@ -58,7 +58,10 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # Use the PAT, not the automatic GITHUB_TOKEN. PRs opened with
+          # GITHUB_TOKEN do not trigger pull_request workflows, so the CI and
+          # linear-history checks would never run on this PR.
+          token: ${{ secrets.GH_PAT }}
           commit-message: "chore(release): bump version to ${{ steps.version.outputs.new_tag }}"
           title: "chore(release): bump version to ${{ steps.version.outputs.new_tag }}"
           body: |
