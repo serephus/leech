@@ -158,9 +158,9 @@ export function datefmt(value: number | string | Date, fmt = "YYYY-MM-DD"): stri
  * `false` to render the content inline without any wrapper.
  */
 export interface SupSubOptions {
-  /** Wrapper for `<sup>` (markdown default `["^", "^"]`, typst default `["^", ""]`). */
+  /** Wrapper for `<sup>` (markdown default `["^", "^"]`, typst default `["#super[", "]"]`). */
   superscript?: [string, string] | false;
-  /** Wrapper for `<sub>` (markdown default `["~", "~"]`, typst default `["_", ""]`). */
+  /** Wrapper for `<sub>` (markdown default `["~", "~"]`, typst default `["#sub[", "]"]`). */
   subscript?: [string, string] | false;
 }
 
@@ -322,8 +322,8 @@ const TYPST_DEFAULTS: TypstRendererOptions = {
   codeFence: "```",
   escape: true,
   hr: "#line(length: 100%)",
-  superscript: ["^", ""],
-  subscript: ["_", ""],
+  superscript: ["#super[", "]"],
+  subscript: ["#sub[", "]"],
 };
 
 /**
@@ -374,8 +374,19 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "em":
       case "i":
         return `_${inline(node)}_`;
-      case "code":
-        return `\`${node.textContent ?? ""}\``;
+      case "code": {
+        // Inline code is raw text in Typst, so nested <sup>/<sub> (e.g. the
+        // 10^9 in LeetCode constraints, which are wrapped in <code>) would be
+        // flattened by `textContent` (10<sup>9</sup> -> "109"). Raw spans
+        // cannot contain markup, so fall back to ordinary inline markup when
+        // an exponent/subscript is present; the escaping renders `nums[i]`
+        // correctly, just without the monospace styling.
+        const hasSupSub = [...node.childNodes].some((c) => {
+          const name = c.nodeName.toLowerCase();
+          return name === "sup" || name === "sub";
+        });
+        return hasSupSub ? inline(node) : `\`${node.textContent ?? ""}\``;
+      }
       case "pre": {
         // Standard block-code pattern: <pre><code class="language-x">…</code></pre>.
         const first = [...node.childNodes].find(

@@ -97,7 +97,7 @@ jobs:
                 content: |
                   = {{ question.title }}
 
-                  {{ question.content | toTypst({ superscript: ["^", ""], subscript: ["_", ""] }) }}
+                  {{ question.content | toTypst }}
 
                   == Submission
 
@@ -281,8 +281,8 @@ content, default `["^", "^"]` / `["~", "~"]`; `false` renders inline),
   (default `true`; escapes Typst special characters in text, including
   `[`/`]` so unmatched brackets in problem strings don't break the
   document), `hr` (default `#line(length: 100%)`), and `superscript` /
-  `subscript` (wrapper `[prefix, suffix]`, default `["^", ""]` / `["_", ""]`;
-  `false` renders inline).
+  `subscript` (wrapper `[prefix, suffix]`, default `["#super[", "]"]` /
+  `["#sub[", "]"]` — real Typst super/subscripts; `false` renders inline).
 
 The same converters are available as factories for embedding code:
 `makeToMarkdown(options)` and `makeToTypst(options)`. `toGfm` is kept as an
