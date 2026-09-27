@@ -177,11 +177,11 @@ describe("makeToTypst", () => {
 
   it("supports custom sup/sub wrappers", () => {
     const ts = makeToTypst({
-      superscript: ["#super[", "]"],
-      subscript: ["#sub[", "]"],
+      superscript: ["#box[#super[", "]]"],
+      subscript: ["#box[#sub[", "]]"],
     })("<p>10<sup>9</sup> H<sub>2</sub></p>");
-    expect(ts).toContain("10#super[9]");
-    expect(ts).toContain("H#sub[2]");
+    expect(ts).toContain("10#box[#super[9]]");
+    expect(ts).toContain("H#box[#sub[2]]");
   });
 
   it("can disable sub wrapping", () => {
@@ -195,13 +195,24 @@ describe("toTypst", () => {
     const ts = toTypst(question.contentHtml);
     expect(ts).toContain("Given `nums`, return _indices_.");
     expect(ts).toContain("```python");
-    expect(ts).toContain("Up to 10^9.");
+    expect(ts).toContain("Up to 10#super[9].");
     expect(ts).toContain("- a < b");
   });
 
   it("converts sup/sub to native typst syntax", () => {
     const ts = toTypst("<p>H<sub>2</sub>O and 10<sup>9</sup></p>");
-    expect(ts).toContain("H_2O and 10^9");
+    expect(ts).toContain("H#sub[2]O and 10#super[9]");
+  });
+
+  it("keeps exponents nested inside inline code", () => {
+    // LeetCode wraps each constraint in <code> and puts the exponent in <sup>.
+    const ts = toTypst(
+      "<ul><li><code>-10<sup>9</sup> &lt;= nums[i] &lt;= 10<sup>9</sup></code></li></ul>"
+    );
+    expect(ts).toContain("-10#super[9] <= nums\\[i\\] <= 10#super[9]");
+    expect(ts).not.toContain("-109");
+    // code without sup/sub keeps its raw (monospace) span
+    expect(toTypst("<p><code>nums[i]</code></p>")).toContain("`nums[i]`");
   });
 
   it("separates non-code pre block lines with blank lines", () => {
