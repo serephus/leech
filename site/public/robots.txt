@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://leech.sereph.us/sitemap.xml

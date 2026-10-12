@@ -8,3 +8,7 @@
 node_modules/
 *.tsbuildinfo
 dist/
+
+# VitePress site build artifacts (site/.vitepress/dist is covered by dist/ above)
+site/.vitepress/cache/
+site/.vitepress/.temp/

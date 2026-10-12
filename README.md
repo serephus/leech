@@ -1,5 +1,7 @@
 # leech
 
+> **Documentation:** <https://leech.sereph.us>
+
 Note: The whole project is vibed by DS4 flash.
 
 A cookie-authenticated [LeetCode](https://leetcode.com) sync GitHub Action.

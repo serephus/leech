@@ -1,0 +1,11 @@
+# Marks this directory as its own pnpm workspace root so the site stays
+# isolated from the repository root workspace (root lockfile / Nix hash).
+packages:
+  - "."
+
+# VitePress needs esbuild's install script. Settings do not cascade across
+# workspace roots, so the allowlist has to be repeated here.
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild

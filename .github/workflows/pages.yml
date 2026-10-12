@@ -1,0 +1,66 @@
+name: Deploy site
+
+# Builds the VitePress project in site/ and publishes it to GitHub Pages at
+# https://leech.sereph.us (the custom domain is set in repo Settings > Pages;
+# Actions-based deployments ignore CNAME files).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "package.json" # the site reads the version from here
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two Pages deployments at once; queue instead (matches the sync
+# workflow's philosophy).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "11.22.0"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
+
+      # site/ declares its own pnpm workspace root, so this does not touch the
+      # repository root lockfile or the Nix dependency hash.
+      - name: Install
+        working-directory: site
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        working-directory: site
+        run: pnpm build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
