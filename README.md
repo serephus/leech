@@ -49,7 +49,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: serephus/leech@v0.1.5 # release tag (the main branch won't work)
+      - uses: serephus/leech@v0.1.6 # release tag (the main branch won't work)
         with:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}
@@ -469,7 +469,7 @@ fallbacks: `LEECH_CONFIG`, `LEETCODE_SESSION`, `LEETCODE_CSRF_TOKEN`,
 
 ## Dist workflow
 
-The action is referenced by tag (`uses: serephus/leech@v0.1.5`), `dist/` is not
+The action is referenced by tag (`uses: serephus/leech@v0.1.6`), `dist/` is not
 committed to the repo (gitignored); CI just verifies it builds. The Dist
 workflow bundles it into the tag at release time.
 
