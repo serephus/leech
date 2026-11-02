@@ -58,7 +58,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: serephus/leech@v0.1.5 # release tag (the main branch won't work)
+      - uses: serephus/leech@v0.1.6 # release tag (the main branch won't work)
         with:
           github-token: ${{ github.token }}
           leetcode-session: ${{ secrets.LEETCODE_SESSION }}

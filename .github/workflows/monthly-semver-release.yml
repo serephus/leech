@@ -50,6 +50,7 @@ jobs:
 
           # update readme
           sed -i "s/leech@v[0-9]\+\.[0-9]\+\.[0-9]\+/leech@${NEW_TAG}/g" README.md
+          sed -i "s/leech@v[0-9]\+\.[0-9]\+\.[0-9]\+/leech@${NEW_TAG}/g" site/guide/getting-started.md
 
           # Update lockfile
           if [ -f package.json ]; then
