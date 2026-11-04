@@ -413,7 +413,10 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "div":
         return `${inline(node).trim()}\n\n`;
       case "br":
-        return "\\\\";
+        // `\\` is an escaped literal backslash in Typst; use the explicit
+        // function so the HTML break survives without relying on trailing
+        // whitespace semantics.
+        return "#linebreak()";
       case "strong":
       case "b":
         return `*${inline(node)}*`;

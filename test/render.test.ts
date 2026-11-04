@@ -264,6 +264,12 @@ describe("toTypst", () => {
     expect(toTypst("<p><del>x]y</del></p>")).toContain("#strike[x\\]y]");
   });
 
+  it("converts br to a real Typst line break", () => {
+    expect(toTypst("<p>a<br>b</p>")).toBe("a#linebreak()b\n");
+    // A literal double backslash would render as a backslash character.
+    expect(toTypst("<p>a<br>b</p>")).not.toContain("\\\\");
+  });
+
   it("converts links, formatting, and strikethrough", () => {
     expect(
       toTypst('<p><a href="https://e.com">x</a> <strong>b</strong> <del>d</del></p>')
