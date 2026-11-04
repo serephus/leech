@@ -53,6 +53,21 @@ export function rewriteAssetUrls(
 }
 
 /**
+ * Builds an asset's repo-relative storage path, omitting empty segments so an
+ * empty prefix/destination (files at the repo root) never produces a leading
+ * slash.
+ */
+export function assetStoragePath(
+  prefix: string,
+  slug: string,
+  filename: string
+): string {
+  return [prefix, "images", slug, filename]
+    .filter((part) => part !== "")
+    .join("/");
+}
+
+/**
  * Resolves how a downloaded asset is referenced in output files. References
  * are repo-root-absolute (`/...`):
  * - `assets` empty (`""`): the full storage path, e.g. storage

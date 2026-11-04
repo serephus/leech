@@ -6,6 +6,7 @@ import { LeetCodeClient } from "./leetcode";
 import {
   assetFilename,
   assetReference,
+  assetStoragePath,
   downloadAsset,
   extractAssetUrls,
   rewriteAssetUrls,
@@ -349,7 +350,7 @@ function buildAssetFiles(
     const bytes = cache.get(entry.url);
     if (!bytes || bytes.length === 0) continue;
 
-    const storagePath = `${prefix}/images/${slug}/${entry.filename}`;
+    const storagePath = assetStoragePath(prefix, slug, entry.filename);
     files.push({ path: storagePath, content: bytes, encoding: "base64" });
     relMap.set(entry.url, assetReference(assets, storagePath));
   }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assetFilename,
   assetReference,
+  assetStoragePath,
   extractAssetUrls,
   rewriteAssetUrls,
 } from "../src/assets";
@@ -54,6 +55,23 @@ describe("assetFilename", () => {
     expect(assetFilename("https://e.com/a/..")).toBe("asset");
     expect(assetFilename("https://e.com/a/%2e%2e")).toBe("asset");
     expect(assetFilename("https://e.com/a/...")).toBe("asset");
+  });
+});
+
+describe("assetStoragePath", () => {
+  it("joins the prefix, images folder, slug, and filename", () => {
+    expect(assetStoragePath("solutions", "two-sum", "img.png")).toBe(
+      "solutions/images/two-sum/img.png"
+    );
+    expect(assetStoragePath("static", "two-sum", "img.png")).toBe(
+      "static/images/two-sum/img.png"
+    );
+  });
+
+  it("omits an empty prefix so the path stays relative", () => {
+    const storage = assetStoragePath("", "two-sum", "img.png");
+    expect(storage).toBe("images/two-sum/img.png");
+    expect(assetReference("", storage)).toBe("/images/two-sum/img.png");
   });
 });
 
