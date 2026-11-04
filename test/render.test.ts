@@ -92,6 +92,13 @@ describe("toMarkdown", () => {
       toMarkdown('<pre><code class="language-py">x</code></pre>')
     ).toContain("```py");
   });
+
+  it("preserves blank lines inside fenced code blocks", () => {
+    const md = toMarkdown(
+      '<pre><code class="language-text">a\n\n\nb\n</code></pre>'
+    );
+    expect(md).toContain("a\n\n\nb");
+  });
 });
 
 describe("toMarkdown gfm mode", () => {
@@ -230,6 +237,13 @@ describe("toTypst", () => {
     expect(toTypst('<pre><code class="language-py">x</code></pre>')).toContain(
       "```py"
     );
+  });
+
+  it("preserves blank lines inside fenced code blocks", () => {
+    const ts = toTypst(
+      '<pre><code class="language-text">a\n\n\nb\n</code></pre>'
+    );
+    expect(ts).toContain("a\n\n\nb");
   });
 
   it("escapes typst special characters in text", () => {

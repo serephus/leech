@@ -195,6 +195,52 @@ export const MARKDOWN_DEFAULTS = {
   strongDelimiter: "**",
 } as const;
 
+/**
+ * Collapses runs of three or more newlines outside fenced code blocks. Code
+ * content must be preserved exactly, so a global replace would corrupt samples
+ * that intentionally contain blank lines.
+ */
+function collapseBlankLinesOutsideFences(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let fence: { char: string; length: number } | null = null;
+  let blankRun = 0;
+
+  for (const line of lines) {
+    const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+
+    if (fence) {
+      out.push(line);
+      if (
+        marker &&
+        marker[1]![0] === fence.char &&
+        marker[1]!.length >= fence.length
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+
+    if (marker) {
+      fence = { char: marker[1]![0]!, length: marker[1]!.length };
+      blankRun = 0;
+      out.push(line);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      blankRun++;
+      if (blankRun <= 2) out.push(line);
+      continue;
+    }
+
+    blankRun = 0;
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
 /** Memoizes a converter factory by the JSON encoding of its options object. */
 function memoizeOptions<O, T>(create: (options: O) => T): (options: O) => T {
   const cache = new Map<string, T>();
@@ -269,7 +315,7 @@ const getTurndown = memoizeOptions(createTurndown);
 function convertMarkdown(html: string, options: MarkdownOptions): string {
   if (!html.trim()) return "";
   const md = getTurndown(options).turndown(html);
-  return md.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  return collapseBlankLinesOutsideFences(md).trim() + "\n";
 }
 
 /**
@@ -497,7 +543,7 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
   return (html: string): string => {
     if (!html.trim()) return "";
     const doc = domino.createDocument(html);
-    return inline(doc.body).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+    return collapseBlankLinesOutsideFences(inline(doc.body)).trim() + "\n";
   };
 }
 
