@@ -89,6 +89,18 @@ describe("rewriteAssetUrls", () => {
     );
     expect(out).toBe('<p><img src="../assets/two-sum/i.png"/></p>');
   });
+
+  it("rewrites longer urls before their prefixes", () => {
+    const html = '<img src="https://e.com/a.png?x=1"/>';
+    const out = rewriteAssetUrls(
+      html,
+      new Map([
+        ["https://e.com/a.png", "/images/a.png"],
+        ["https://e.com/a.png?x=1", "/images/query.png"],
+      ])
+    );
+    expect(out).toBe('<img src="/images/query.png"/>');
+  });
 });
 
 describe("assets + conversion", () => {

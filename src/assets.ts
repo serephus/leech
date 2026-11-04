@@ -37,13 +37,16 @@ export function assetFilename(url: string): string {
 /**
  * Rewrites asset URLs in HTML to local paths. Simple per-URL string
  * replacement — safe because the map keys are exact attribute values.
+ * Longer URLs are replaced first so a URL that is a prefix of another (e.g.
+ * `a.png` and `a.png?x=1`) cannot partially rewrite the longer one.
  */
 export function rewriteAssetUrls(
   html: string,
   map: ReadonlyMap<string, string>
 ): string {
   let out = html;
-  for (const [url, path] of map) {
+  const entries = [...map].sort(([a], [b]) => b.length - a.length);
+  for (const [url, path] of entries) {
     out = out.split(url).join(path);
   }
   return out;
