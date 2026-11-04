@@ -287,6 +287,15 @@ describe("toTypst", () => {
     ).toContain('#link("https://e.com")[x] *b* #strike[d]');
   });
 
+  it("escapes quotes and backslashes in link and image targets", () => {
+    expect(toTypst(`<p><a href='https://e.com/a"b'>x</a></p>`)).toContain(
+      '#link("https://e.com/a\\"b")[x]'
+    );
+    expect(toTypst(`<p><img src='https://e.com/a"b.png'></p>`)).toContain(
+      '#image("https://e.com/a\\"b.png")'
+    );
+  });
+
   it("drops script and style", () => {
     expect(toTypst("<p>x</p><script>alert(1)</script>")).toBe("x\n");
   });

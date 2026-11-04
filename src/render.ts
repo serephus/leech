@@ -389,6 +389,11 @@ function escapeTypstText(text: string): string {
     .replace(/\]/g, "\\]");
 }
 
+/** Escapes a value for use inside a Typst string literal (link/image targets). */
+function escapeTypstString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /**
  * Collects a table's rows, descending through the optional `<thead>`,
  * `<tbody>`, and `<tfoot>` wrappers that real-world HTML (including LeetCode)
@@ -508,12 +513,12 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
         return `${out}\n\n`;
       }
       case "a": {
-        const href = node.getAttribute("href") ?? "";
+        const href = escapeTypstString(node.getAttribute("href") ?? "");
         const text = inline(node).trim();
         return text ? `#link("${href}")[${text}]` : `#link("${href}")`;
       }
       case "img":
-        return `#image("${node.getAttribute("src") ?? ""}")`;
+        return `#image("${escapeTypstString(node.getAttribute("src") ?? "")}")`;
       case "sup":
         return opts.superscript
           ? `${opts.superscript[0]}${inline(node)}${opts.superscript[1]}`
