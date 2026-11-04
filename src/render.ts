@@ -389,6 +389,24 @@ function escapeTypstText(text: string): string {
     .replace(/\]/g, "\\]");
 }
 
+/**
+ * Collects a table's rows, descending through the optional `<thead>`,
+ * `<tbody>`, and `<tfoot>` wrappers that real-world HTML (including LeetCode)
+ * uses. Rows are returned in document order.
+ */
+function tableRows(node: domino.DomNode): domino.DomNode[] {
+  const rows: domino.DomNode[] = [];
+  for (const child of node.childNodes) {
+    const name = child.nodeName;
+    if (name === "TR") {
+      rows.push(child);
+    } else if (name === "THEAD" || name === "TBODY" || name === "TFOOT") {
+      rows.push(...tableRows(child));
+    }
+  }
+  return rows;
+}
+
 function makeTypstConverter(options: TypstOptions): (html: string) => string {
   const opts: TypstRendererOptions = { ...TYPST_DEFAULTS, ...options };
 
@@ -527,7 +545,7 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "template":
         return "";
       case "table": {
-        const rows = node.childNodes.filter((n) => n.nodeName === "TR");
+        const rows = tableRows(node);
         if (rows.length === 0) return "";
         const cells = rows.map((r) =>
           r.childNodes

@@ -246,6 +246,17 @@ describe("toTypst", () => {
     expect(ts).toContain("a\n\n\nb");
   });
 
+  it("converts tables wrapped in thead/tbody/tfoot", () => {
+    const ts = toTypst(
+      "<table>" +
+        "<thead><tr><th>a</th><th>b</th></tr></thead>" +
+        "<tbody><tr><td>1</td><td>2</td></tr></tbody>" +
+        "<tfoot><tr><td>3</td><td>4</td></tr></tfoot>" +
+        "</table>"
+    );
+    expect(ts).toBe("#table(columns: 2, [a], [b], [1], [2], [3], [4])\n");
+  });
+
   it("escapes typst special characters in text", () => {
     expect(toTypst("<p>cost $10, a * b, #tag</p>")).toContain(
       "cost \\$10, a \\* b, \\#tag"
