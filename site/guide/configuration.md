@@ -2,7 +2,8 @@
 
 Everything leech does is driven by the `config` input — a single inline YAML
 string. This page is the complete reference; every key below is optional except
-where noted, and omitting a key uses its default.
+where noted, and omitting a key uses its default. Unknown keys are rejected, so
+typos fail the run instead of being silently ignored.
 
 ::: tip Why one big scalar?
 GitHub Actions only accepts flat key-value pairs as action inputs, so structured

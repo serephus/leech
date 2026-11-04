@@ -92,6 +92,13 @@ describe("toMarkdown", () => {
       toMarkdown('<pre><code class="language-py">x</code></pre>')
     ).toContain("```py");
   });
+
+  it("preserves blank lines inside fenced code blocks", () => {
+    const md = toMarkdown(
+      '<pre><code class="language-text">a\n\n\nb\n</code></pre>'
+    );
+    expect(md).toContain("a\n\n\nb");
+  });
 });
 
 describe("toMarkdown gfm mode", () => {
@@ -232,6 +239,24 @@ describe("toTypst", () => {
     );
   });
 
+  it("preserves blank lines inside fenced code blocks", () => {
+    const ts = toTypst(
+      '<pre><code class="language-text">a\n\n\nb\n</code></pre>'
+    );
+    expect(ts).toContain("a\n\n\nb");
+  });
+
+  it("converts tables wrapped in thead/tbody/tfoot", () => {
+    const ts = toTypst(
+      "<table>" +
+        "<thead><tr><th>a</th><th>b</th></tr></thead>" +
+        "<tbody><tr><td>1</td><td>2</td></tr></tbody>" +
+        "<tfoot><tr><td>3</td><td>4</td></tr></tfoot>" +
+        "</table>"
+    );
+    expect(ts).toBe("#table(columns: 2, [a], [b], [1], [2], [3], [4])\n");
+  });
+
   it("escapes typst special characters in text", () => {
     expect(toTypst("<p>cost $10, a * b, #tag</p>")).toContain(
       "cost \\$10, a \\* b, \\#tag"
@@ -250,10 +275,25 @@ describe("toTypst", () => {
     expect(toTypst("<p><del>x]y</del></p>")).toContain("#strike[x\\]y]");
   });
 
+  it("converts br to a real Typst line break", () => {
+    expect(toTypst("<p>a<br>b</p>")).toBe("a#linebreak()b\n");
+    // A literal double backslash would render as a backslash character.
+    expect(toTypst("<p>a<br>b</p>")).not.toContain("\\\\");
+  });
+
   it("converts links, formatting, and strikethrough", () => {
     expect(
       toTypst('<p><a href="https://e.com">x</a> <strong>b</strong> <del>d</del></p>')
     ).toContain('#link("https://e.com")[x] *b* #strike[d]');
+  });
+
+  it("escapes quotes and backslashes in link and image targets", () => {
+    expect(toTypst(`<p><a href='https://e.com/a"b'>x</a></p>`)).toContain(
+      '#link("https://e.com/a\\"b")[x]'
+    );
+    expect(toTypst(`<p><img src='https://e.com/a"b.png'></p>`)).toContain(
+      '#image("https://e.com/a\\"b.png")'
+    );
   });
 
   it("drops script and style", () => {

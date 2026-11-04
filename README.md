@@ -121,7 +121,8 @@ Action inputs:
 
 ## Configuration reference
 
-Every option with its default value. Omit any key to use the default.
+Every option with its default value. Omit any key to use the default. Unknown
+keys are rejected, so typos fail the run instead of being silently ignored.
 
 ```yaml
 repo:                       # optional; default: the repo the action runs in

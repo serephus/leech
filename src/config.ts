@@ -57,10 +57,12 @@ tags: [{% for t in question.tags %}"{{ t }}"{% if not loop.last %}, {% endif %}{
   },
 ];
 
-const fileTemplateSchema = z.object({
-  filename: z.string().min(1),
-  content: z.string(),
-});
+const fileTemplateSchema = z
+  .object({
+    filename: z.string().min(1),
+    content: z.string(),
+  })
+  .strict();
 
 export const filterConfigSchema = z
   .object({
@@ -90,6 +92,7 @@ export const filterConfigSchema = z
       .transform(parseBound)
       .nullish(),
   })
+  .strict()
   .default({ ...DEFAULT_FILTERS });
 
 export const commitConfigSchema = z
@@ -99,6 +102,7 @@ export const commitConfigSchema = z
     authorName: z.string().default(DEFAULT_COMMIT.authorName),
     authorEmail: z.string().default(DEFAULT_COMMIT.authorEmail),
   })
+  .strict()
   .default({ ...DEFAULT_COMMIT });
 
 export const clientConfigSchema = z
@@ -110,6 +114,7 @@ export const clientConfigSchema = z
       .max(10000)
       .default(DEFAULT_CLIENT.delayMs),
   })
+  .strict()
   .default({ ...DEFAULT_CLIENT });
 
 export const renderConfigSchema = z
@@ -118,6 +123,7 @@ export const renderConfigSchema = z
       .boolean()
       .default(DEFAULT_RENDER.throwOnUndefined),
   })
+  .strict()
   .default({ ...DEFAULT_RENDER });
 
 const HOOK_ERROR_POLICIES = ["fail", "warn"] as const;
@@ -130,13 +136,15 @@ const DEFAULT_HOOKS = {
   onError: "fail" as const,
 };
 
-const hookBaseSchema = z.object({
-  run: z.string().min(1),
-  cwd: z.string().optional(),
-  timeoutMs: z.number().int().min(0).optional(),
-  onError: z.enum(HOOK_ERROR_POLICIES).optional(),
-  env: z.record(z.string(), z.string()).optional(),
-});
+const hookBaseSchema = z
+  .object({
+    run: z.string().min(1),
+    cwd: z.string().optional(),
+    timeoutMs: z.number().int().min(0).optional(),
+    onError: z.enum(HOOK_ERROR_POLICIES).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+  })
+  .strict();
 
 const submissionHookSchema = hookBaseSchema.extend({
   when: z.enum(SUBMISSION_HOOK_PHASES).default("before-commit"),
@@ -172,30 +180,34 @@ export const hooksConfigSchema = z
     submission: submissionHookFieldSchema.optional(),
     post: postHookFieldSchema.optional(),
   })
+  .strict()
   .default({ ...DEFAULT_HOOKS });
 
-export const configSchema = z.object({
-  repo: z
-    .object({ owner: z.string().min(1), name: z.string().min(1) })
-    .optional(),
-  branch: z.string().min(1).optional(),
-  destination: z
-    .string()
-    .default("solutions")
-    .transform(normalizeDestination),
-  site: z.enum(["leetcode.com", "leetcode.cn"]).default("leetcode.com"),
-  assets: z
-    .string()
-    .nullable()
-    .default(null)
-    .transform(normalizeAssets),
-  filters: filterConfigSchema,
-  files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
-  commit: commitConfigSchema,
-  client: clientConfigSchema,
-  render: renderConfigSchema,
-  hooks: hooksConfigSchema,
-});
+export const configSchema = z
+  .object({
+    repo: z
+      .object({ owner: z.string().min(1), name: z.string().min(1) })
+      .strict()
+      .optional(),
+    branch: z.string().min(1).optional(),
+    destination: z
+      .string()
+      .default("solutions")
+      .transform(normalizeDestination),
+    site: z.enum(["leetcode.com", "leetcode.cn"]).default("leetcode.com"),
+    assets: z
+      .string()
+      .nullable()
+      .default(null)
+      .transform(normalizeAssets),
+    filters: filterConfigSchema,
+    files: z.array(fileTemplateSchema).min(1).default(DEFAULT_FILES),
+    commit: commitConfigSchema,
+    client: clientConfigSchema,
+    render: renderConfigSchema,
+    hooks: hooksConfigSchema,
+  })
+  .strict();
 
 // Config types are derived from the zod schema so they cannot drift from it.
 export type FileTemplate = z.infer<typeof fileTemplateSchema>;

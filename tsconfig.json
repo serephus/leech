@@ -10,6 +10,10 @@
     "resolveJsonModule": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
     "types": ["node"],
     "outDir": "dist"
   },

@@ -4,6 +4,8 @@ import type { Question, SubmissionDetails, SubmissionListEntry } from "./types";
 const MAX_ATTEMPTS = 3;
 /** Default base backoff between attempts; the n-th retry waits n * this. */
 const RETRY_BASE_MS = 1000;
+/** Default per-request timeout; a hung connection would otherwise stall the sync. */
+const REQUEST_TIMEOUT_MS = 30000;
 
 /**
  * The LeetCode site to talk to. `leetcode.cn` uses the same GraphQL schema
@@ -111,6 +113,7 @@ export class LeetCodeClient {
   private readonly csrf: string;
   private readonly delayMs: number;
   private readonly retryBaseMs: number;
+  private readonly requestTimeoutMs: number;
   private readonly baseUrl: string;
   private readonly graphqlUrl: string;
 
@@ -119,12 +122,14 @@ export class LeetCodeClient {
     csrf: string,
     delayMs: number,
     site: LeetCodeSite = "leetcode.com",
-    retryBaseMs = RETRY_BASE_MS
+    retryBaseMs = RETRY_BASE_MS,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS
   ) {
     this.session = session;
     this.csrf = csrf;
     this.delayMs = delayMs;
     this.retryBaseMs = retryBaseMs;
+    this.requestTimeoutMs = requestTimeoutMs;
     this.baseUrl = `https://${site}`;
     this.graphqlUrl = `${this.baseUrl}/graphql`;
   }
@@ -147,7 +152,11 @@ export class LeetCodeClient {
 
       let res: Response;
       try {
-        res = await fetch(url, init);
+        const signal =
+          this.requestTimeoutMs > 0
+            ? AbortSignal.timeout(this.requestTimeoutMs)
+            : undefined;
+        res = await fetch(url, signal ? { ...init, signal } : init);
       } catch (err) {
         lastError = new Error(`network error: ${(err as Error).message}`);
         continue;
@@ -170,13 +179,29 @@ export class LeetCodeClient {
           `LeetCode request failed: HTTP ${res.status} ${res.statusText} (${url})`
         );
       }
+      let body: T;
       try {
-        return (await res.json()) as T;
+        body = (await res.json()) as T;
       } catch {
         throw new Error(
           `LeetCode returned malformed JSON (HTTP ${res.status}) (${url})`
         );
       }
+      // GraphQL errors still arrive with HTTP 200. Surface them instead of
+      // letting a null `data` look like an expired session (or be ignored).
+      const errors = (body as { errors?: unknown }).errors;
+      if (Array.isArray(errors) && errors.length > 0) {
+        const messages = errors
+          .map((err) => {
+            const message = (err as { message?: unknown })?.message;
+            return typeof message === "string" ? message : "unknown error";
+          })
+          .join("; ");
+        throw new Error(
+          `LeetCode GraphQL error: ${messages || "unknown error"} (${url})`
+        );
+      }
+      return body;
     }
     throw lastError ?? new Error(`LeetCode request failed (${url})`);
   }
@@ -204,8 +229,13 @@ export class LeetCodeClient {
     const list = res.data?.submissionList;
     // An invalid/expired session yields HTTP 200 with a null submissionList
     // (hasNext/submissions are null), so the 401/403 guard in request() never
-    // fires. Fail loudly instead of silently syncing nothing.
-    if (!list || list.hasNext === null || list.submissions === null) {
+    // fires. Fail loudly instead of silently syncing nothing. Missing fields
+    // (undefined) are treated the same way rather than crashing downstream.
+    if (
+      !list ||
+      typeof list.hasNext !== "boolean" ||
+      !Array.isArray(list.submissions)
+    ) {
       throw new Error(
         "LeetCode returned no submission list — the session cookie is likely " +
           "invalid or expired. Refresh LEETCODE_SESSION and csrftoken from your browser."

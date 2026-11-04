@@ -195,6 +195,52 @@ export const MARKDOWN_DEFAULTS = {
   strongDelimiter: "**",
 } as const;
 
+/**
+ * Collapses runs of three or more newlines outside fenced code blocks. Code
+ * content must be preserved exactly, so a global replace would corrupt samples
+ * that intentionally contain blank lines.
+ */
+function collapseBlankLinesOutsideFences(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let fence: { char: string; length: number } | null = null;
+  let blankRun = 0;
+
+  for (const line of lines) {
+    const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+
+    if (fence) {
+      out.push(line);
+      if (
+        marker &&
+        marker[1]![0] === fence.char &&
+        marker[1]!.length >= fence.length
+      ) {
+        fence = null;
+      }
+      continue;
+    }
+
+    if (marker) {
+      fence = { char: marker[1]![0]!, length: marker[1]!.length };
+      blankRun = 0;
+      out.push(line);
+      continue;
+    }
+
+    if (line.trim() === "") {
+      blankRun++;
+      if (blankRun <= 2) out.push(line);
+      continue;
+    }
+
+    blankRun = 0;
+    out.push(line);
+  }
+
+  return out.join("\n");
+}
+
 /** Memoizes a converter factory by the JSON encoding of its options object. */
 function memoizeOptions<O, T>(create: (options: O) => T): (options: O) => T {
   const cache = new Map<string, T>();
@@ -269,7 +315,7 @@ const getTurndown = memoizeOptions(createTurndown);
 function convertMarkdown(html: string, options: MarkdownOptions): string {
   if (!html.trim()) return "";
   const md = getTurndown(options).turndown(html);
-  return md.replace(/\n{3,}/g, "\n\n").trim() + "\n";
+  return collapseBlankLinesOutsideFences(md).trim() + "\n";
 }
 
 /**
@@ -343,6 +389,29 @@ function escapeTypstText(text: string): string {
     .replace(/\]/g, "\\]");
 }
 
+/** Escapes a value for use inside a Typst string literal (link/image targets). */
+function escapeTypstString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
+ * Collects a table's rows, descending through the optional `<thead>`,
+ * `<tbody>`, and `<tfoot>` wrappers that real-world HTML (including LeetCode)
+ * uses. Rows are returned in document order.
+ */
+function tableRows(node: domino.DomNode): domino.DomNode[] {
+  const rows: domino.DomNode[] = [];
+  for (const child of node.childNodes) {
+    const name = child.nodeName;
+    if (name === "TR") {
+      rows.push(child);
+    } else if (name === "THEAD" || name === "TBODY" || name === "TFOOT") {
+      rows.push(...tableRows(child));
+    }
+  }
+  return rows;
+}
+
 function makeTypstConverter(options: TypstOptions): (html: string) => string {
   const opts: TypstRendererOptions = { ...TYPST_DEFAULTS, ...options };
 
@@ -367,7 +436,10 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "div":
         return `${inline(node).trim()}\n\n`;
       case "br":
-        return "\\\\";
+        // `\\` is an escaped literal backslash in Typst; use the explicit
+        // function so the HTML break survives without relying on trailing
+        // whitespace semantics.
+        return "#linebreak()";
       case "strong":
       case "b":
         return `*${inline(node)}*`;
@@ -441,12 +513,12 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
         return `${out}\n\n`;
       }
       case "a": {
-        const href = node.getAttribute("href") ?? "";
+        const href = escapeTypstString(node.getAttribute("href") ?? "");
         const text = inline(node).trim();
         return text ? `#link("${href}")[${text}]` : `#link("${href}")`;
       }
       case "img":
-        return `#image("${node.getAttribute("src") ?? ""}")`;
+        return `#image("${escapeTypstString(node.getAttribute("src") ?? "")}")`;
       case "sup":
         return opts.superscript
           ? `${opts.superscript[0]}${inline(node)}${opts.superscript[1]}`
@@ -478,7 +550,7 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
       case "template":
         return "";
       case "table": {
-        const rows = node.childNodes.filter((n) => n.nodeName === "TR");
+        const rows = tableRows(node);
         if (rows.length === 0) return "";
         const cells = rows.map((r) =>
           r.childNodes
@@ -497,7 +569,7 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
   return (html: string): string => {
     if (!html.trim()) return "";
     const doc = domino.createDocument(html);
-    return inline(doc.body).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+    return collapseBlankLinesOutsideFences(inline(doc.body)).trim() + "\n";
   };
 }
 

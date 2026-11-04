@@ -51,6 +51,23 @@ describe("LeetCodeClient.listSubmissions", () => {
     await expect(client.listSubmissions(0)).rejects.toThrow(/session cookie/i);
   });
 
+  it("throws when submissionList fields are missing", async () => {
+    mockFetch({ data: { submissionList: { hasNext: false } } });
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(/session cookie/i);
+  });
+
+  it("surfaces GraphQL errors instead of treating them as a bad session", async () => {
+    mockFetch({
+      data: null,
+      errors: [{ message: "rate limit exceeded" }, { message: "query too complex" }],
+    });
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(
+      /GraphQL error: rate limit exceeded; query too complex/
+    );
+  });
+
   it("returns an empty page for a valid session with no submissions", async () => {
     mockFetch({ data: { submissionList: { hasNext: false, submissions: [] } } });
     const client = new LeetCodeClient("session", "csrf", 0);
@@ -79,6 +96,27 @@ describe("LeetCodeClient.listSubmissions", () => {
       hasMore: true,
       submissions: [entry],
     });
+  });
+
+  it("passes a timeout signal to fetch", async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return {
+          status: 200,
+          ok: true,
+          statusText: "OK",
+          json: async () => ({
+            data: { submissionList: { hasNext: false, submissions: [] } },
+          }),
+        };
+      })
+    );
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await client.listSubmissions(0);
+    expect(signal).toBeInstanceOf(AbortSignal);
   });
 
   it("targets leetcode.cn when site is configured", async () => {

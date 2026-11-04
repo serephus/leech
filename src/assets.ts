@@ -29,22 +29,42 @@ export function assetFilename(url: string): string {
     /* keep the raw segment on malformed escapes */
   }
   const cleaned = last.replace(/[^a-zA-Z0-9._-]+/g, "-");
-  return cleaned || "asset";
+  // "." and ".." are directory references, not filenames; committing them
+  // would either fail or escape the per-problem image directory.
+  return cleaned === "" || /^\.+$/.test(cleaned) ? "asset" : cleaned;
 }
 
 /**
  * Rewrites asset URLs in HTML to local paths. Simple per-URL string
  * replacement — safe because the map keys are exact attribute values.
+ * Longer URLs are replaced first so a URL that is a prefix of another (e.g.
+ * `a.png` and `a.png?x=1`) cannot partially rewrite the longer one.
  */
 export function rewriteAssetUrls(
   html: string,
   map: ReadonlyMap<string, string>
 ): string {
   let out = html;
-  for (const [url, path] of map) {
+  const entries = [...map].sort(([a], [b]) => b.length - a.length);
+  for (const [url, path] of entries) {
     out = out.split(url).join(path);
   }
   return out;
+}
+
+/**
+ * Builds an asset's repo-relative storage path, omitting empty segments so an
+ * empty prefix/destination (files at the repo root) never produces a leading
+ * slash.
+ */
+export function assetStoragePath(
+  prefix: string,
+  slug: string,
+  filename: string
+): string {
+  return [prefix, "images", slug, filename]
+    .filter((part) => part !== "")
+    .join("/");
 }
 
 /**
@@ -64,9 +84,17 @@ export function assetReference(assets: string, storagePath: string): string {
   return `/${relative}`;
 }
 
+/** Default per-asset download timeout; a hung CDN should not stall the sync. */
+const ASSET_TIMEOUT_MS = 30000;
+
 /** Downloads an asset into a Buffer; throws on a non-OK response. */
-export async function downloadAsset(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+export async function downloadAsset(
+  url: string,
+  timeoutMs = ASSET_TIMEOUT_MS
+): Promise<Buffer> {
+  const signal =
+    timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }
