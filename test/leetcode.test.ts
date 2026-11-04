@@ -92,6 +92,27 @@ describe("LeetCodeClient.listSubmissions", () => {
     });
   });
 
+  it("passes a timeout signal to fetch", async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return {
+          status: 200,
+          ok: true,
+          statusText: "OK",
+          json: async () => ({
+            data: { submissionList: { hasNext: false, submissions: [] } },
+          }),
+        };
+      })
+    );
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await client.listSubmissions(0);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
   it("targets leetcode.cn when site is configured", async () => {
     let calledUrl = "";
     vi.stubGlobal(

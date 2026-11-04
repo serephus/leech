@@ -4,6 +4,8 @@ import type { Question, SubmissionDetails, SubmissionListEntry } from "./types";
 const MAX_ATTEMPTS = 3;
 /** Default base backoff between attempts; the n-th retry waits n * this. */
 const RETRY_BASE_MS = 1000;
+/** Default per-request timeout; a hung connection would otherwise stall the sync. */
+const REQUEST_TIMEOUT_MS = 30000;
 
 /**
  * The LeetCode site to talk to. `leetcode.cn` uses the same GraphQL schema
@@ -111,6 +113,7 @@ export class LeetCodeClient {
   private readonly csrf: string;
   private readonly delayMs: number;
   private readonly retryBaseMs: number;
+  private readonly requestTimeoutMs: number;
   private readonly baseUrl: string;
   private readonly graphqlUrl: string;
 
@@ -119,12 +122,14 @@ export class LeetCodeClient {
     csrf: string,
     delayMs: number,
     site: LeetCodeSite = "leetcode.com",
-    retryBaseMs = RETRY_BASE_MS
+    retryBaseMs = RETRY_BASE_MS,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS
   ) {
     this.session = session;
     this.csrf = csrf;
     this.delayMs = delayMs;
     this.retryBaseMs = retryBaseMs;
+    this.requestTimeoutMs = requestTimeoutMs;
     this.baseUrl = `https://${site}`;
     this.graphqlUrl = `${this.baseUrl}/graphql`;
   }
@@ -147,7 +152,11 @@ export class LeetCodeClient {
 
       let res: Response;
       try {
-        res = await fetch(url, init);
+        const signal =
+          this.requestTimeoutMs > 0
+            ? AbortSignal.timeout(this.requestTimeoutMs)
+            : undefined;
+        res = await fetch(url, signal ? { ...init, signal } : init);
       } catch (err) {
         lastError = new Error(`network error: ${(err as Error).message}`);
         continue;
