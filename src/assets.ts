@@ -84,9 +84,17 @@ export function assetReference(assets: string, storagePath: string): string {
   return `/${relative}`;
 }
 
+/** Default per-asset download timeout; a hung CDN should not stall the sync. */
+const ASSET_TIMEOUT_MS = 30000;
+
 /** Downloads an asset into a Buffer; throws on a non-OK response. */
-export async function downloadAsset(url: string): Promise<Buffer> {
-  const res = await fetch(url);
+export async function downloadAsset(
+  url: string,
+  timeoutMs = ASSET_TIMEOUT_MS
+): Promise<Buffer> {
+  const signal =
+    timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  const res = await fetch(url, signal ? { signal } : undefined);
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }

@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assetFilename,
   assetReference,
   assetStoragePath,
+  downloadAsset,
   extractAssetUrls,
   rewriteAssetUrls,
 } from "../src/assets";
@@ -118,6 +119,42 @@ describe("rewriteAssetUrls", () => {
       ])
     );
     expect(out).toBe('<img src="/images/query.png"/>');
+  });
+});
+
+describe("downloadAsset", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("downloads bytes and passes a timeout signal", async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        signal = init?.signal ?? undefined;
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+        };
+      })
+    );
+
+    const body = await downloadAsset("https://e.com/a.png");
+    expect(body.equals(Buffer.from([1, 2, 3]))).toBe(true);
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("throws on a non-OK response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404, statusText: "Not Found" }))
+    );
+    await expect(downloadAsset("https://e.com/missing.png")).rejects.toThrow(
+      /HTTP 404 Not Found/
+    );
   });
 });
 
