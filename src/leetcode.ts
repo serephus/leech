@@ -170,13 +170,29 @@ export class LeetCodeClient {
           `LeetCode request failed: HTTP ${res.status} ${res.statusText} (${url})`
         );
       }
+      let body: T;
       try {
-        return (await res.json()) as T;
+        body = (await res.json()) as T;
       } catch {
         throw new Error(
           `LeetCode returned malformed JSON (HTTP ${res.status}) (${url})`
         );
       }
+      // GraphQL errors still arrive with HTTP 200. Surface them instead of
+      // letting a null `data` look like an expired session (or be ignored).
+      const errors = (body as { errors?: unknown }).errors;
+      if (Array.isArray(errors) && errors.length > 0) {
+        const messages = errors
+          .map((err) => {
+            const message = (err as { message?: unknown })?.message;
+            return typeof message === "string" ? message : "unknown error";
+          })
+          .join("; ");
+        throw new Error(
+          `LeetCode GraphQL error: ${messages || "unknown error"} (${url})`
+        );
+      }
+      return body;
     }
     throw lastError ?? new Error(`LeetCode request failed (${url})`);
   }

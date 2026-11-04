@@ -51,6 +51,17 @@ describe("LeetCodeClient.listSubmissions", () => {
     await expect(client.listSubmissions(0)).rejects.toThrow(/session cookie/i);
   });
 
+  it("surfaces GraphQL errors instead of treating them as a bad session", async () => {
+    mockFetch({
+      data: null,
+      errors: [{ message: "rate limit exceeded" }, { message: "query too complex" }],
+    });
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(
+      /GraphQL error: rate limit exceeded; query too complex/
+    );
+  });
+
   it("returns an empty page for a valid session with no submissions", async () => {
     mockFetch({ data: { submissionList: { hasNext: false, submissions: [] } } });
     const client = new LeetCodeClient("session", "csrf", 0);
