@@ -29,7 +29,9 @@ export function assetFilename(url: string): string {
     /* keep the raw segment on malformed escapes */
   }
   const cleaned = last.replace(/[^a-zA-Z0-9._-]+/g, "-");
-  return cleaned || "asset";
+  // "." and ".." are directory references, not filenames; committing them
+  // would either fail or escape the per-problem image directory.
+  return cleaned === "" || /^\.+$/.test(cleaned) ? "asset" : cleaned;
 }
 
 /**

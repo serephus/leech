@@ -48,6 +48,13 @@ describe("assetFilename", () => {
   it("falls back when the url has no filename", () => {
     expect(assetFilename("https://e.com/")).toBe("asset");
   });
+
+  it("never returns a directory reference", () => {
+    expect(assetFilename("https://e.com/a/.")).toBe("asset");
+    expect(assetFilename("https://e.com/a/..")).toBe("asset");
+    expect(assetFilename("https://e.com/a/%2e%2e")).toBe("asset");
+    expect(assetFilename("https://e.com/a/...")).toBe("asset");
+  });
 });
 
 describe("assetReference", () => {
