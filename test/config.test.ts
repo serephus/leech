@@ -91,6 +91,22 @@ files:
     expect(() => parseConfig("just a string")).toThrow(/must be a YAML mapping/);
   });
 
+  it("rejects unknown keys instead of silently ignoring typos", () => {
+    expect(() => parseConfig("fliters:\n  status: all")).toThrow(/fliters/);
+    expect(() => parseConfig("filters:\n  language: [python3]")).toThrow(
+      /language/
+    );
+    expect(() =>
+      parseConfig("files:\n  - filename: x.md\n    content: x\n    contnet: y")
+    ).toThrow(/contnet/);
+    expect(() =>
+      parseConfig("repo:\n  owner: o\n  name: r\n  branch: main")
+    ).toThrow(/branch/);
+    expect(() =>
+      parseConfig("hooks:\n  pre:\n    run: echo hi\n    timeout: 5")
+    ).toThrow(/timeout/);
+  });
+
   it("accepts null filter bounds (documented as \"no bound\")", () => {
     const cfg = parseConfig(
       "filters:\n  since: null\n  until: null\nfiles:\n  - filename: x.md\n    content: x"
