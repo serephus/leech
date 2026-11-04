@@ -51,6 +51,12 @@ describe("LeetCodeClient.listSubmissions", () => {
     await expect(client.listSubmissions(0)).rejects.toThrow(/session cookie/i);
   });
 
+  it("throws when submissionList fields are missing", async () => {
+    mockFetch({ data: { submissionList: { hasNext: false } } });
+    const client = new LeetCodeClient("session", "csrf", 0);
+    await expect(client.listSubmissions(0)).rejects.toThrow(/session cookie/i);
+  });
+
   it("surfaces GraphQL errors instead of treating them as a bad session", async () => {
     mockFetch({
       data: null,

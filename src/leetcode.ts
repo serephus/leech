@@ -229,8 +229,13 @@ export class LeetCodeClient {
     const list = res.data?.submissionList;
     // An invalid/expired session yields HTTP 200 with a null submissionList
     // (hasNext/submissions are null), so the 401/403 guard in request() never
-    // fires. Fail loudly instead of silently syncing nothing.
-    if (!list || list.hasNext === null || list.submissions === null) {
+    // fires. Fail loudly instead of silently syncing nothing. Missing fields
+    // (undefined) are treated the same way rather than crashing downstream.
+    if (
+      !list ||
+      typeof list.hasNext !== "boolean" ||
+      !Array.isArray(list.submissions)
+    ) {
       throw new Error(
         "LeetCode returned no submission list — the session cookie is likely " +
           "invalid or expired. Refresh LEETCODE_SESSION and csrftoken from your browser."
