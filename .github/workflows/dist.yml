@@ -1,12 +1,14 @@
-# Builds dist/index.js, commits it on top of the pushed tag's commit, and
+# Builds dist/index.js, commits it on top of the pushed tag's commit,
 # force-moves the tag to that commit — so `uses: serephus/leech@vX.Y.Z`
-# always resolves to a commit that contains the bundled action.
+# always resolves to a commit that contains the bundled action — and finally
+# publishes the GitHub Release for that tag.
 #
 # Loop safety: pushes made with GITHUB_TOKEN do not trigger new workflow runs,
 # and the "Skip if dist is already up to date" step guards manual re-runs.
+# Release creation is idempotent so re-runs don't fail on an existing release.
 #
 # Customize the commit message via the env vars below.
-name: "Build dist and move tag"
+name: "Build dist, move tag, and publish release"
 
 on:
   push:
@@ -65,3 +67,12 @@ jobs:
               commit -m "${COMMIT_PREFIX} ${message}"
           git tag -f "$tag" HEAD
           git push -f origin "$tag"
+
+      # Runs even when dist was already up to date, so every tag gets a release.
+      # The action updates the existing release on re-runs instead of failing.
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true

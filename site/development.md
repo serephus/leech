@@ -48,7 +48,7 @@ Because it uses `fetchPnpmDeps`, the dependency hash is pinned: when
 | --- | --- | --- |
 | `ci.yml` | pull requests | install, `typecheck`, `test`, `build` |
 | `git-linear-checks.yml` | pull requests | linear-history check via [`serephus/perch`](https://github.com/serephus/perch) |
-| `dist.yml` | tag push (`v*`) | builds `dist/`, commits it on top of the tag, force-moves the tag |
+| `dist.yml` | tag push (`v*`) | builds `dist/`, force-moves the tag, publishes a GitHub Release |
 | `monthly-semver-release.yml` | monthly cron | opens a version-bump PR (updates `README.md` and `package.json`) |
 | `tag-on-merge.yml` | version-bump PR merged | creates the release tag |
 | `pages.yml` | pushes to `site/**` | builds and deploys this website |
@@ -66,8 +66,9 @@ reference a release tag (`@<ActionTag />`) and not `@main`.
    `package.json` and opens a PR.
 2. Merging that PR triggers `tag-on-merge.yml`, which reads the new tag out of
    `README.md` and creates it.
-3. The tag push triggers `dist.yml`, which builds `dist/` and moves the tag to
-   the commit containing it.
+3. The tag push triggers `dist.yml`, which builds `dist/`, moves the tag to the
+   commit containing it, and publishes a GitHub Release with automatically
+   generated notes.
 
 The website reads its version directly from `package.json`, so it stays in sync
 automatically.
