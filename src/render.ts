@@ -395,6 +395,27 @@ function escapeTypstString(value: string): string {
 }
 
 /**
+ * Wraps rendered inline content in Typst markup, keeping whitespace at line
+ * boundaries outside the delimiters. LeetCode sometimes leaves a newline
+ * before a closing tag (`<strong>Explanation:\n</strong>`); leaving it inside
+ * would put a paragraph break between the markers, which Typst cannot parse.
+ * Wrapping each line separately also keeps formatting valid when a tag spans
+ * multiple lines inside a `<pre>` block.
+ */
+function wrapInline(open: string, close: string, content: string): string {
+  return content
+    .split("\n")
+    .map((line) => {
+      const core = line.trim();
+      if (core === "") return line;
+      const start = line.indexOf(core);
+      const end = start + core.length;
+      return `${line.slice(0, start)}${open}${core}${close}${line.slice(end)}`;
+    })
+    .join("\n");
+}
+
+/**
  * Collects a table's rows, descending through the optional `<thead>`,
  * `<tbody>`, and `<tfoot>` wrappers that real-world HTML (including LeetCode)
  * uses. Rows are returned in document order.
@@ -442,10 +463,10 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
         return "#linebreak()";
       case "strong":
       case "b":
-        return `*${inline(node)}*`;
+        return wrapInline("*", "*", inline(node));
       case "em":
       case "i":
-        return `_${inline(node)}_`;
+        return wrapInline("_", "_", inline(node));
       case "code": {
         // Inline code is raw text in Typst, so nested <sup>/<sub> (e.g. the
         // 10^9 in LeetCode constraints, which are wrapped in <code>) would be
@@ -521,24 +542,28 @@ function makeTypstConverter(options: TypstOptions): (html: string) => string {
         return `#image("${escapeTypstString(node.getAttribute("src") ?? "")}")`;
       case "sup":
         return opts.superscript
-          ? `${opts.superscript[0]}${inline(node)}${opts.superscript[1]}`
+          ? wrapInline(
+              opts.superscript[0],
+              opts.superscript[1],
+              inline(node)
+            )
           : inline(node);
       case "sub":
         return opts.subscript
-          ? `${opts.subscript[0]}${inline(node)}${opts.subscript[1]}`
+          ? wrapInline(opts.subscript[0], opts.subscript[1], inline(node))
           : inline(node);
       case "del":
       case "s":
       case "strike":
-        return `#strike[${inline(node)}]`;
+        return wrapInline("#strike[", "]", inline(node));
       case "u":
-        return `#underline[${inline(node)}]`;
+        return wrapInline("#underline[", "]", inline(node));
       case "mark":
-        return `#highlight[${inline(node)}]`;
+        return wrapInline("#highlight[", "]", inline(node));
       case "small":
-        return `#small[${inline(node)}]`;
+        return wrapInline("#small[", "]", inline(node));
       case "blockquote":
-        return `#quote[${inline(node)}]`;
+        return wrapInline("#quote[", "]", inline(node));
       case "hr":
         return `${opts.hr}\n\n`;
       case "script":
