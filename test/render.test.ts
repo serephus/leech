@@ -233,6 +233,21 @@ describe("toTypst", () => {
     expect(ts).not.toMatch(/```\nnum1/); // the inline code child must not swallow the block
   });
 
+  it("keeps pre line breaks outside inline formatting markers", () => {
+    // LeetCode leaves the newline inside the tag (e.g. Example 2 of #2348):
+    // <strong>Explanation:\n</strong>. It must not end up inside `*…*`, or
+    // the paragraph break in the pre block splits the delimiters.
+    const ts = toTypst(
+      "<pre><strong>Explanation:\n</strong>There are 5 occurrences.</pre>"
+    );
+    expect(ts).toBe("*Explanation:*\n\nThere are 5 occurrences.\n");
+  });
+
+  it("wraps each line when inline formatting spans pre lines", () => {
+    const ts = toTypst("<pre><strong>first\nsecond</strong></pre>");
+    expect(ts).toBe("*first*\n\n*second*\n");
+  });
+
   it("keeps standard pre>code blocks fenced", () => {
     expect(toTypst('<pre><code class="language-py">x</code></pre>')).toContain(
       "```py"
